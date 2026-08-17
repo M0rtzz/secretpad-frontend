@@ -2,7 +2,7 @@ import { message } from 'antd';
 import React from 'react';
 import { history } from 'umi';
 
-import { ReactComponent as Logo } from '@/assets/logo1.svg';
+import hustnlpLogo from '@/assets/hustnlp-logo.png';
 import { Platform } from '@/components/platform-wrapper';
 import { DefaultComponentInterpreterService } from '@/modules/component-interpreter/component-interpreter-service';
 import { DefaultModalManager } from '@/modules/dag-modal-manager';
@@ -20,7 +20,11 @@ export const LoginComponent: React.FC = () => {
   return (
     <div className={styles.content}>
       <div className={styles.left}>
-        <Logo />
+        <img
+          className={styles.brandLogo}
+          src={hustnlpLogo}
+          alt="华中科技大学自然语言处理与知识图谱实验室"
+        />
       </div>
       <div className={styles.right}>
         <LoginForm onConfirm={loginModel.loginConfirm} />

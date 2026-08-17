@@ -24,7 +24,7 @@ export const P2PWorkbenchComponent = () => {
         <div className={classNames(styles.titleContent, styles.flexContent)}>
           <div className={styles.title}>
             <span className={styles.tea}>🍵</span>
-            Hi～，欢迎来到Secretpad-Edge平台
+            Hi～，欢迎来到HUSTNLP数据沙箱
           </div>
           <div
             className={styles.unfold}

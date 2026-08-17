@@ -5,10 +5,8 @@
 
 EMAIL=$(git config user.email)
 
-if [[ ! $EMAIL =~ ^.*(@alibaba-inc.com)$ ]];
-then
-    :;
-else
+case "$EMAIL" in
+  *@alibaba-inc.com)
     echo "You are using a company email address.";
     echo "Please use your personal or GitHub email address instead.";
     echo "";
@@ -17,8 +15,10 @@ else
     echo "   git config user.email 'your.email@example.org'";
     echo "";
     exit 1;
-fi;
+    ;;
+esac
 
-# 2) Lint staged files
+# 2) Lint staged files sequentially. Running ESLint and Stylelint in parallel can
+#    exhaust memory on this repository and causes lint-staged to kill workers.
 
-pnpm exec lint-staged
+pnpm exec lint-staged --concurrent false
