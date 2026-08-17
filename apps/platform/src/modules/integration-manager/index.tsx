@@ -22,6 +22,7 @@ import {
   responseData,
 } from '@/services/data-sandbox';
 import {
+  formatError,
   formatTime,
   MvpNotice,
   MvpPage,
@@ -37,6 +38,7 @@ export const IntegrationManagerComponent = () => {
     oidc: {},
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [clientOpen, setClientOpen] = useState(false);
   const [webhookOpen, setWebhookOpen] = useState(false);
   const [credential, setCredential] = useState<DataSandboxRecord>();
@@ -46,6 +48,7 @@ export const IntegrationManagerComponent = () => {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const next = responseData(await DataSandboxApi.integrations(), {});
       setData(next);
@@ -55,8 +58,10 @@ export const IntegrationManagerComponent = () => {
         scopes: next.oidc?.scopes,
         enabled: !!next.oidc?.enabled,
       });
-    } catch (error: any) {
-      message.error(error.message || '加载对接配置失败');
+    } catch (requestError: unknown) {
+      const detail = formatError(requestError, '加载对接配置失败');
+      setError(detail);
+      message.error(detail);
     } finally {
       setLoading(false);
     }
@@ -70,6 +75,8 @@ export const IntegrationManagerComponent = () => {
     <MvpPage
       title="系统对接"
       description="API 文档、调用凭证、回调、同步记录、失败重试与 OIDC 配置测试"
+      error={error}
+      onRetry={refresh}
       extra={<RefreshButton loading={loading} onClick={refresh} />}
     >
       <MvpNotice />

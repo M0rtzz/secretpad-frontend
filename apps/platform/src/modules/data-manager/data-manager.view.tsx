@@ -75,7 +75,7 @@ export const DataManagerComponent: React.FC = () => {
 
   const columns = [
     {
-      title: '数据表名',
+      title: '数据资源',
       dataIndex: 'datatableName',
       key: 'datatableName',
       ellipsis: true,
@@ -85,6 +85,13 @@ export const DataManagerComponent: React.FC = () => {
           <a onClick={() => viewInstance.openDataInfo(tableInfo)}>{text}</a>
         </Tooltip>
       ),
+    },
+    {
+      title: '数据格式',
+      dataIndex: 'type',
+      key: 'type',
+      width: '8%',
+      render: (value: string) => <Tag>{value || 'TABLE'}</Tag>,
     },
     {
       title: '数据源类型',
@@ -98,6 +105,14 @@ export const DataManagerComponent: React.FC = () => {
         { text: 'ODPS', value: DataSourceType.ODPS },
         { text: 'MYSQL', value: DataSourceType.MYSQL },
       ],
+    },
+    {
+      title: '数据源',
+      dataIndex: 'datasourceName',
+      key: 'datasourceName',
+      width: '12%',
+      ellipsis: true,
+      render: (value: string) => value || '-',
     },
     {
       title: '已授权项目',

@@ -52,6 +52,18 @@ export const computeModeText = {
   [ComputeModeType.TEE]: '枢纽',
 };
 
+const projectStatusText: Record<string, string> = {
+  REVIEWING: '待审批',
+  APPROVED: '环境就绪',
+  REJECTED: '已驳回',
+};
+
+const projectStatusColor: Record<string, string> = {
+  REVIEWING: 'processing',
+  APPROVED: 'success',
+  REJECTED: 'error',
+};
+
 export const ProjectListComponent: React.FC = () => {
   const projectListModel = useModel(ProjectListModel);
   const projectListService = useModel(ProjectListService);
@@ -212,6 +224,11 @@ export const ProjectListComponent: React.FC = () => {
                       ] || computeModeText[ComputeModeType.MPC]}
                     </Tag>
                   </Tooltip>
+                  {item.status && (
+                    <Tag color={projectStatusColor[item.status] || 'default'}>
+                      {projectStatusText[item.status] || item.status}
+                    </Tag>
+                  )}
                   <div className={styles.header} style={{ flex: 1 }}>
                     <Tooltip title={item.projectName}>
                       <Title className={styles.ellipsisName} level={5} ellipsis={true}>
@@ -251,7 +268,8 @@ export const ProjectListComponent: React.FC = () => {
                   </div>
                 </div>
                 <div className={styles.time}>
-                  创建于{formatTimestamp(item.gmtCreate as string)}
+                  {item.initiatorName || item.initiator || '未知创建人'} · 创建于
+                  {formatTimestamp(item.gmtCreate as string)}
                 </div>
               </div>
               <div className={styles.bootom}>

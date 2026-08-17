@@ -7,11 +7,15 @@ export const MvpPage = ({
   title,
   description,
   extra,
+  error,
+  onRetry,
   children,
 }: {
   title: string;
   description: string;
   extra?: ReactNode;
+  error?: string;
+  onRetry?: () => void;
   children: ReactNode;
 }) => (
   <div className={styles.page}>
@@ -24,6 +28,16 @@ export const MvpPage = ({
       </div>
       <Space>{extra}</Space>
     </div>
+    {error && (
+      <Alert
+        showIcon
+        type="error"
+        message="页面数据加载失败"
+        description={error}
+        action={onRetry ? <Button onClick={onRetry}>重试</Button> : undefined}
+        className={styles.notice}
+      />
+    )}
     <div className={styles.content}>{children}</div>
   </div>
 );
@@ -45,12 +59,18 @@ export const RefreshButton = ({
   loading?: boolean;
   onClick: () => void;
 }) => (
-  <Button type="button" loading={loading} onClick={onClick}>
+  <Button loading={loading} onClick={onClick}>
     刷新
   </Button>
 );
 
 export const formatTime = (value: unknown) => String(value || '-').replace('T', ' ');
+
+export const formatError = (error: unknown, fallback = '请求失败') => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error) return error;
+  return fallback;
+};
 
 export const saveBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob);

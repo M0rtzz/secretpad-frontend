@@ -18,7 +18,12 @@ import {
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
-import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
+import {
+  formatError,
+  formatTime,
+  MvpPage,
+  RefreshButton,
+} from '@/modules/data-sandbox-mvp/common';
 
 const statusLabels: Record<string, string> = {
   MODEL_REVIEW: '待模型审核',
@@ -39,6 +44,7 @@ const statusColors: Record<string, string> = {
 export const ModelApprovalComponent = () => {
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [keyword, setKeyword] = useState('');
   const [submitOpen, setSubmitOpen] = useState(false);
@@ -50,10 +56,13 @@ export const ModelApprovalComponent = () => {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       setItems(responseData(await DataSandboxApi.models({ status, keyword }), []));
-    } catch (error: any) {
-      message.error(error.message || '加载审批列表失败');
+    } catch (requestError: unknown) {
+      const detail = formatError(requestError, '加载审批列表失败');
+      setError(detail);
+      message.error(detail);
     } finally {
       setLoading(false);
     }
@@ -93,6 +102,8 @@ export const ModelApprovalComponent = () => {
     <MvpPage
       title="模型审批管理"
       description="提交、模型审核、资源审核、驳回、复审、审批记录和版本发布控制"
+      error={error}
+      onRetry={refresh}
       extra={
         <>
           <RefreshButton loading={loading} onClick={refresh} />
