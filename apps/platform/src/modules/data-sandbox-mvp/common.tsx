@@ -45,7 +45,7 @@ export const RefreshButton = ({
   loading?: boolean;
   onClick: () => void;
 }) => (
-  <Button type="button" loading={loading} onClick={onClick}>
+  <Button loading={loading} onClick={onClick}>
     刷新
   </Button>
 );

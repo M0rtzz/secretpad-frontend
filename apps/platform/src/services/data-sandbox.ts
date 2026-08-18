@@ -38,6 +38,14 @@ export const DataSandboxApi = {
     post<DataSandboxRecord>('/resources/quota', data),
   alerts: (status = '') => get<DataSandboxRecord[]>('/resources/alerts', { status }),
   resolveAlert: (id: string) => post('/resources/alerts/resolve', { id }),
+  networkAllowlist: (sandboxId = '') =>
+    get<DataSandboxRecord[]>('/resources/network/allowlist', { sandboxId }),
+  addNetworkAllowlist: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/resources/network/allowlist', data),
+  deleteNetworkAllowlist: (id: string) =>
+    post('/resources/network/allowlist/delete', { id }),
+  limitVerify: (sandboxId: string) =>
+    post<DataSandboxRecord>('/operations/limit-verify', { sandboxId }),
 
   models: (params?: DataSandboxRecord) => get<DataSandboxRecord[]>('/models', params),
   submitModel: (data: DataSandboxRecord) =>

@@ -42,8 +42,13 @@ export const SandboxManagerComponent = () => {
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
+  const [allowlistOpen, setAllowlistOpen] = useState(false);
+  const [allowlistSandboxId, setAllowlistSandboxId] = useState('');
+  const [allowlistItems, setAllowlistItems] = useState<DataSandboxRecord[]>([]);
+  const [allowlistLoading, setAllowlistLoading] = useState(false);
   const [form] = Form.useForm();
   const [imageForm] = Form.useForm();
+  const [allowlistForm] = Form.useForm();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -96,6 +101,51 @@ export const SandboxManagerComponent = () => {
     }
   };
 
+  // Z-02 网络白名单：仅 ALLOW_LIST 策略沙箱提供管理入口
+  const loadAllowlist = async (sandboxId: string) => {
+    setAllowlistLoading(true);
+    try {
+      setAllowlistItems(
+        responseData(await DataSandboxApi.networkAllowlist(sandboxId), []),
+      );
+    } catch (error: any) {
+      message.error(error.message || '加载白名单失败');
+    } finally {
+      setAllowlistLoading(false);
+    }
+  };
+  const openAllowlist = async (sandboxId: string) => {
+    setAllowlistSandboxId(sandboxId);
+    setAllowlistOpen(true);
+    allowlistForm.resetFields();
+    loadAllowlist(sandboxId);
+  };
+  const addAllowlist = async (values: DataSandboxRecord) => {
+    try {
+      responseData(
+        await DataSandboxApi.addNetworkAllowlist({
+          sandboxId: allowlistSandboxId,
+          ...values,
+        }),
+        {},
+      );
+      message.success('白名单已添加');
+      allowlistForm.resetFields();
+      loadAllowlist(allowlistSandboxId);
+    } catch (error: any) {
+      message.error(error.message || '添加白名单失败');
+    }
+  };
+  const deleteAllowlist = async (id: string) => {
+    try {
+      responseData(await DataSandboxApi.deleteNetworkAllowlist(id), {});
+      message.success('白名单已删除');
+      loadAllowlist(allowlistSandboxId);
+    } catch (error: any) {
+      message.error(error.message || '删除白名单失败');
+    }
+  };
+
   const columns = [
     {
       title: '沙箱',
@@ -120,6 +170,19 @@ export const SandboxManagerComponent = () => {
           <Tag color={statusColors[value] || 'default'}>{value}</Tag>
         </Tooltip>
       ),
+    },
+    {
+      title: '分配状态',
+      dataIndex: 'alloc_state',
+      render: (value: string) => {
+        if (!value) return '-';
+        const allocColors: Record<string, string> = {
+          RESERVED: 'blue',
+          BOUND: 'green',
+          RELEASED: 'default',
+        };
+        return <Tag color={allocColors[value] || 'default'}>{value}</Tag>;
+      },
     },
     {
       title: '资源配额',
@@ -159,7 +222,9 @@ export const SandboxManagerComponent = () => {
               停止
             </Button>
           )}
-          {record.status === 'RUNNING' && record.endpoint ? (
+          {record.status === 'RUNNING' &&
+          record.endpoint &&
+          record.network_policy !== 'NO_NETWORK' ? (
             <Button
               size="small"
               type="link"
@@ -167,6 +232,11 @@ export const SandboxManagerComponent = () => {
               style={{ color: '#1890ff' }}
             >
               打开开发环境
+            </Button>
+          ) : null}
+          {record.network_policy === 'ALLOW_LIST' ? (
+            <Button size="small" type="link" onClick={() => openAllowlist(record.id)}>
+              白名单
             </Button>
           ) : null}
           <Button
@@ -350,6 +420,78 @@ export const SandboxManagerComponent = () => {
           </Form.Item>
           <Button type="primary" htmlType="submit">
             新增镜像
+          </Button>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`出口白名单（${allowlistSandboxId}）`}
+        open={allowlistOpen}
+        width={760}
+        onCancel={() => setAllowlistOpen(false)}
+        footer={null}
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          loading={allowlistLoading}
+          pagination={false}
+          dataSource={allowlistItems}
+          columns={[
+            { title: '目标地址', dataIndex: 'host' },
+            { title: '端口', dataIndex: 'port' },
+            {
+              title: '协议',
+              dataIndex: 'proto',
+              render: (v: string) => <Tag>{v || 'tcp'}</Tag>,
+            },
+            { title: '备注', dataIndex: 'remark', render: (v: string) => v || '-' },
+            { title: '创建时间', dataIndex: 'created_at', render: formatTime },
+            {
+              title: '操作',
+              render: (_: unknown, row: DataSandboxRecord) => (
+                <Button
+                  danger
+                  size="small"
+                  type="link"
+                  onClick={() => deleteAllowlist(row.id)}
+                >
+                  删除
+                </Button>
+              ),
+            },
+          ]}
+        />
+        <Form
+          form={allowlistForm}
+          layout="inline"
+          style={{ marginTop: 20 }}
+          initialValues={{ proto: 'tcp' }}
+          onFinish={addAllowlist}
+        >
+          <Form.Item
+            name="host"
+            rules={[{ required: true, message: '请输入目标地址' }]}
+          >
+            <Input placeholder="目标地址，如 api.example.com" style={{ width: 220 }} />
+          </Form.Item>
+          <Form.Item name="port" rules={[{ required: true, message: '端口 1-65535' }]}>
+            <InputNumber min={1} max={65535} placeholder="端口" />
+          </Form.Item>
+          <Form.Item name="proto">
+            <Select
+              style={{ width: 90 }}
+              options={[
+                { value: 'tcp', label: 'tcp' },
+                { value: 'udp', label: 'udp' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="remark">
+            <Input placeholder="备注（可选）" style={{ width: 180 }} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit">
+            添加
           </Button>
         </Form>
       </Modal>
