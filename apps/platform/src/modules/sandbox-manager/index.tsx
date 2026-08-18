@@ -11,6 +11,7 @@ import {
   Table,
   Tag,
   Tooltip,
+  Typography,
 } from 'antd';
 import { parse } from 'query-string';
 import { useCallback, useEffect, useState } from 'react';
@@ -26,9 +27,11 @@ import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/c
 const statusColors: Record<string, string> = {
   RUNNING: 'success',
   STARTING: 'processing',
+  STOPPING: 'processing',
   STOPPED: 'default',
   ERROR: 'error',
   EXPIRED: 'warning',
+  DESTROYED: 'default',
 };
 
 export const SandboxManagerComponent = () => {
@@ -68,10 +71,28 @@ export const SandboxManagerComponent = () => {
         await DataSandboxApi.sandboxAction({ id, action: name, ...extra }),
         {},
       );
-      message.success('操作已提交');
+      if (name === 'START') {
+        message.info('启动中，约 30 秒内完成（后台同步），可稍后刷新查看状态');
+      } else {
+        message.success('操作已提交');
+      }
       refresh();
     } catch (error: any) {
       message.error(error.message || '操作失败');
+    }
+  };
+
+  // 打开开发环境：签发一次性 token 后新标签页跳转跳板地址
+  const openDevEndpoint = async (record: DataSandboxRecord) => {
+    try {
+      const result = responseData(
+        await DataSandboxApi.devToken(record.id),
+        null as any,
+      );
+      if (!result || !result.url) throw new Error('签发访问地址失败');
+      window.open(result.url, '_blank');
+    } catch (error: any) {
+      message.error(error.message || '打开开发环境失败');
     }
   };
 
@@ -112,8 +133,21 @@ export const SandboxManagerComponent = () => {
     },
     { title: '到期时间', dataIndex: 'expires_at', render: formatTime },
     {
+      title: '端点',
+      dataIndex: 'endpoint',
+      width: 180,
+      render: (value: string) =>
+        value ? (
+          <Typography.Text copyable={{ text: value }} style={{ fontSize: 12 }}>
+            {value}
+          </Typography.Text>
+        ) : (
+          '-'
+        ),
+    },
+    {
       title: '操作',
-      width: 250,
+      width: 300,
       render: (_: unknown, record: DataSandboxRecord) => (
         <Space wrap>
           {record.status !== 'RUNNING' ? (
@@ -125,6 +159,16 @@ export const SandboxManagerComponent = () => {
               停止
             </Button>
           )}
+          {record.status === 'RUNNING' && record.endpoint ? (
+            <Button
+              size="small"
+              type="link"
+              onClick={() => openDevEndpoint(record)}
+              style={{ color: '#1890ff' }}
+            >
+              打开开发环境
+            </Button>
+          ) : null}
           <Button
             size="small"
             type="link"
