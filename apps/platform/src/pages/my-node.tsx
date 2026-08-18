@@ -8,7 +8,7 @@ import { useModel } from '@/util/valtio-helper';
 const HomePage = () => {
   const homeLayoutService = useModel(HomeLayoutService);
   useEffect(() => {
-    homeLayoutService.setSubTitle('Edge');
+    homeLayoutService.setSubTitle('数据沙箱');
   }, []);
   return (
     <HomeLayout>

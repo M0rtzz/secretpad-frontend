@@ -1,6 +1,4 @@
 import {
-  GlobalOutlined,
-  ReadOutlined,
   BellOutlined,
   CaretDownOutlined,
   LogoutOutlined,
@@ -16,7 +14,7 @@ import centerOfflineImgLink from '@/assets/center-offline.png';
 import centerImgLink from '@/assets/center.png';
 import edgeOfflineImgLink from '@/assets/edge-offline.png';
 import edgeImgLink from '@/assets/edge.png';
-import Logo from '@/assets/logo.svg';
+import hustnlpLogo from '@/assets/hustnlp-logo.png';
 import fallbackLink from '@/assets/offline-user.png';
 import { EdgeAuthWrapper } from '@/components/edge-wrapper-auth';
 import { hasAccess, Platform } from '@/components/platform-wrapper';
@@ -207,7 +205,13 @@ export const HeaderComponent = () => {
               }
             }}
           >
-            {platformConfig.header.logo ? platformConfig.header.logo : <Logo />}
+            {platformConfig.header.logo || (
+              <img
+                className={styles.brandLogo}
+                src={hustnlpLogo}
+                alt="华中科技大学自然语言处理与知识图谱实验室"
+              />
+            )}
           </div>
         }
         <span className={styles.subTitle}>{layoutService.subTitle}</span>
@@ -264,28 +268,6 @@ export const HeaderComponent = () => {
           </div>
         )}
 
-        {platformConfig.header.rightLinks === true && (
-          <>
-            <span
-              className={styles.community}
-              onClick={() =>
-                viewInstance.goto('https://github.com/orgs/secretflow/discussions')
-              }
-            >
-              <GlobalOutlined />
-              隐语开源社区
-            </span>
-            {/* <span className={styles.line} /> */}
-            <span
-              className={styles.help}
-              onClick={() => viewInstance.goto('https://www.secretflow.org.cn/docs')}
-            >
-              <ReadOutlined />
-              帮助中心
-            </span>
-            {/* {viewInstance.showGoToHome(pathname) && <span className={styles.line} />} */}
-          </>
-        )}
         {viewInstance.showMessage(pathname) && (
           <>
             <span
@@ -310,7 +292,6 @@ export const HeaderComponent = () => {
             </span>
           </>
         )}
-        {<>{platformConfig.header.rightLinks}</>}
         <span className={styles.loginline} />
         <Dropdown
           menu={{

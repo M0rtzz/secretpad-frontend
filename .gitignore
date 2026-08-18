@@ -1,52 +1,48 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-node_modules
+# Dependencies
+node_modules/
 .pnp
 .pnp.js
+.pnpm-store/
 
-# testing
-coverage
-
-# next.js
-.next/
+# Generated application and package builds
+dist/
+es/
+lib/
+build/
 out/
-build
+.next/
+coverage/
 
-dist
-es
-lib
+# Framework and task caches
+.umi*/
+.dumi*/
+.nx/
+.turbo/
+.cache/
 
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# local env files
+# Local environment and credentials
+.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+*.pem
 
-# turbo
-.turbo
+# Logs and temporary files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.swp
+*.swo
 
-# Umi
-.umi*/
-.dumi*/
-
-# macOS
+# Editors and operating systems
+.idea/
+.vscode/
 .DS_Store
+Thumbs.db
 
-.env
-
+# Local repository synchronization helpers
 repo_sync
-
 syncSecretPad.js
-
-.nx

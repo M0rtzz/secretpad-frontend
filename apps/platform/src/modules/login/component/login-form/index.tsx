@@ -23,7 +23,7 @@ export const LoginForm = (props: {
   return (
     <div className={styles.loginForm}>
       <Title level={3} className={styles.title}>
-        隐语登录
+        数据沙箱登录
       </Title>
       <p className={styles.slogan}>科技护航数据安全，开源加速数据流通</p>
       <Form

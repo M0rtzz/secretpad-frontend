@@ -1,6 +1,14 @@
 import Icon from '@ant-design/icons';
+import {
+  ApiOutlined,
+  DashboardOutlined,
+  ExperimentOutlined,
+  FileSearchOutlined,
+  SafetyCertificateOutlined,
+  ToolOutlined,
+} from '@ant-design/icons';
 import { parse } from 'query-string';
-import { useEffect } from 'react';
+import { lazy, useEffect } from 'react';
 import { useLocation } from 'umi';
 
 import { ReactComponent as DataSource } from '@/assets/data-source.svg';
@@ -22,6 +30,47 @@ import { P2PWorkbenchComponent } from '@/modules/p2p-workbench/workbench.view';
 import { ResultManagerComponent } from '@/modules/result-manager/result-manager.view';
 import { useModel } from '@/util/valtio-helper';
 import { hasAccess, Platform } from '@/components/platform-wrapper';
+
+// Keep the workbench bundle small and isolate optional MVP pages. A failure in
+// one management page must not prevent the default workbench from mounting.
+const SandboxManagerComponent = lazy(() =>
+  import('@/modules/sandbox-manager').then(
+    ({ SandboxManagerComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
+const ResourceManagerComponent = lazy(() =>
+  import('@/modules/resource-manager').then(
+    ({ ResourceManagerComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
+const ModelApprovalComponent = lazy(() =>
+  import('@/modules/model-approval').then(({ ModelApprovalComponent: Component }) => ({
+    default: Component,
+  })),
+);
+const UnifiedLogComponent = lazy(() =>
+  import('@/modules/unified-log').then(({ UnifiedLogComponent: Component }) => ({
+    default: Component,
+  })),
+);
+const IntegrationManagerComponent = lazy(() =>
+  import('@/modules/integration-manager').then(
+    ({ IntegrationManagerComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
+const OperationCenterComponent = lazy(() =>
+  import('@/modules/operation-center').then(
+    ({ OperationCenterComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
 
 const menuItems: {
   label: string;
@@ -65,6 +114,42 @@ const menuItems: {
     component: <ResultManagerComponent />,
     key: 'result',
   },
+  {
+    label: '沙箱管理',
+    icon: <ExperimentOutlined />,
+    component: <SandboxManagerComponent />,
+    key: 'sandbox-manager',
+  },
+  {
+    label: '资源管理',
+    icon: <DashboardOutlined />,
+    component: <ResourceManagerComponent />,
+    key: 'resource-manager',
+  },
+  {
+    label: '模型审批',
+    icon: <SafetyCertificateOutlined />,
+    component: <ModelApprovalComponent />,
+    key: 'model-approval',
+  },
+  {
+    label: '统一日志',
+    icon: <FileSearchOutlined />,
+    component: <UnifiedLogComponent />,
+    key: 'unified-log',
+  },
+  {
+    label: '系统对接',
+    icon: <ApiOutlined />,
+    component: <IntegrationManagerComponent />,
+    key: 'integration-manager',
+  },
+  {
+    label: '运维服务',
+    icon: <ToolOutlined />,
+    component: <OperationCenterComponent />,
+    key: 'operation-center',
+  },
 ];
 const EdgePage = () => {
   const { search } = useLocation();
@@ -91,7 +176,7 @@ const EdgePage = () => {
         }
       }
     };
-    homeLayoutService.setSubTitle('Edge');
+    homeLayoutService.setSubTitle('数据沙箱');
     if (!isAutonomyMode) {
       getNodeList();
     }

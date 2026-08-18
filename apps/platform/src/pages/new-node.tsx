@@ -80,7 +80,7 @@ const NodePage = () => {
         }
       }
     };
-    homeLayoutService.setSubTitle('Edge');
+    homeLayoutService.setSubTitle('数据沙箱');
     getNodeList();
     // 获取未处理消息数量
     getMessageTotal();

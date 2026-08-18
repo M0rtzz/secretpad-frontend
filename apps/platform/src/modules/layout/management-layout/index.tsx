@@ -1,9 +1,17 @@
 import { MenuUnfoldOutlined, MenuFoldOutlined } from '@ant-design/icons';
 import { useKeyPress } from 'ahooks';
-import { Menu } from 'antd';
+import { Alert, Menu, Spin } from 'antd';
 import classnames from 'classnames';
 import { parse, stringify } from 'query-string';
-import { useEffect, useState } from 'react';
+import {
+  Component,
+  ErrorInfo,
+  ReactNode,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { history, useLocation } from 'umi';
 
 import { isWindows } from '@/util/platform';
@@ -22,6 +30,37 @@ type ManagementLayoutComponentProps = {
   defaultTabKey?: string;
 };
 
+class ManagementPageBoundary extends Component<
+  { children: ReactNode },
+  { error?: Error }
+> {
+  state: { error?: Error } = {};
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // Keep the rest of the platform usable if an optional page has a runtime
+    // incompatibility in a browser or a stale cached chunk.
+    console.error('Management page failed to render', error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <Alert
+          type="error"
+          showIcon
+          message="页面加载失败"
+          description="请刷新当前页面后重试；如果问题持续，请联系运维支持。"
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export const foldHotKey = {
   key: isWindows ? 'ctrl.uparrow' : 'meta.ctrl.uparrow',
   text: isWindows ? 'Ctrl + ↑' : '⌘ + ctrl + ↑ ',
@@ -34,25 +73,27 @@ export const ManagementLayoutComponent = (props: ManagementLayoutComponentProps)
   const [collapsed, setCollapsed] = useState(false);
 
   const { pathname, search } = useLocation();
-  const parsedSearch = parse(search);
+  const parsedSearch = useMemo(() => parse(search), [search]);
 
   const { tab, ownerId } = parsedSearch as { tab?: string; ownerId?: string };
   const [tabKey, setTabKey] = useState<string>();
 
   useEffect(() => {
-    history.replace({
-      pathname: pathname === '/' ? '/home' : pathname,
-      search: stringify(
-        ownerId
-          ? {
-              ...parsedSearch,
-              ownerId,
-              tab: tab || defaultTabKey,
-            }
-          : { tab: tab || defaultTabKey },
-      ),
-    });
-  }, [defaultTabKey, tab]);
+    const nextSearch = stringify(
+      ownerId
+        ? {
+            ...parsedSearch,
+            ownerId,
+            tab: tab || defaultTabKey,
+          }
+        : { tab: tab || defaultTabKey },
+    );
+    const nextPathname = pathname === '/' ? '/home' : pathname;
+    // Avoid replacing an already-normalized URL on every mount/refresh.
+    if (nextPathname !== pathname || nextSearch !== search.replace(/^\?/, '')) {
+      history.replace({ pathname: nextPathname, search: nextSearch });
+    }
+  }, [defaultTabKey, ownerId, parsedSearch, pathname, search, tab]);
 
   useEffect(() => {
     setTabKey(tab || defaultTabKey);
@@ -116,7 +157,11 @@ export const ManagementLayoutComponent = (props: ManagementLayoutComponentProps)
           [styles.workbenchContentContainer]: tabKey === 'workbench',
         })}
       >
-        {menuItems.find(({ key }) => key === tabKey)?.component}
+        <Suspense fallback={<Spin />}>
+          <ManagementPageBoundary key={tabKey}>
+            {menuItems.find(({ key }) => key === tabKey)?.component}
+          </ManagementPageBoundary>
+        </Suspense>
       </div>
     </div>
   );

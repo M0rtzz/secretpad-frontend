@@ -30,13 +30,17 @@ export default defineConfig({
   npmClient: 'pnpm',
   // https: {},
   svgr: {},
-  title: '隐语开放平台',
+  title: 'HUSTNLP 数据沙箱',
   favicons: ['/favicon.ico'],
   extraBabelPlugins: [
     'babel-plugin-transform-typescript-metadata',
     'babel-plugin-parameter-decorator',
   ],
   mfsu: false,
+  // Route chunks otherwise keep stable names such as p__edge.async.js. After
+  // an upgrade, a browser can combine a cached chunk with the new runtime and
+  // fail in webpack's module loader. Content hashes make each build immutable.
+  hash: true,
   codeSplitting: {
     jsStrategy: 'granularChunks',
   },
