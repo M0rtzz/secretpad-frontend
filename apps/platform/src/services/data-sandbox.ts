@@ -54,6 +54,18 @@ export const DataSandboxApi = {
     post<DataSandboxRecord>('/models/action', data),
   modelHistory: (id: string) => get<DataSandboxRecord[]>('/models/history', { id }),
 
+  // Z-03 沙箱资源申请与审批
+  approvals: (params?: DataSandboxRecord) =>
+    get<DataSandboxRecord[]>('/approvals', params),
+  approvalDetail: (id: string) => get<DataSandboxRecord>('/approvals/detail', { id }),
+  approvalSubmit: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/approvals/submit', data),
+  approvalAction: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/approvals/action', data),
+  approvalHistory: (id: string) =>
+    get<DataSandboxRecord[]>('/approvals/history', { id }),
+  approvalConfig: () => get<DataSandboxRecord>('/approvals/config'),
+
   logs: (params?: DataSandboxRecord) => get<DataSandboxRecord[]>('/logs', params),
   retention: () => get<DataSandboxRecord[]>('/logs/retention'),
   saveRetention: (data: DataSandboxRecord) => post('/logs/retention', data),

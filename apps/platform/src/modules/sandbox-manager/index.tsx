@@ -23,6 +23,8 @@ import {
   responseData,
 } from '@/services/data-sandbox';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
+import { LoginService } from '@/modules/login/login.service';
+import { useModel } from '@/util/valtio-helper';
 
 const statusColors: Record<string, string> = {
   RUNNING: 'success',
@@ -37,6 +39,7 @@ const statusColors: Record<string, string> = {
 export const SandboxManagerComponent = () => {
   const { search } = useLocation();
   const ownerId = String(parse(search).ownerId || '');
+  const loginService = useModel(LoginService);
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
   const [images, setImages] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,9 +49,32 @@ export const SandboxManagerComponent = () => {
   const [allowlistSandboxId, setAllowlistSandboxId] = useState('');
   const [allowlistItems, setAllowlistItems] = useState<DataSandboxRecord[]>([]);
   const [allowlistLoading, setAllowlistLoading] = useState(false);
+  const [approvalRequired, setApprovalRequired] = useState(false);
   const [form] = Form.useForm();
   const [imageForm] = Form.useForm();
   const [allowlistForm] = Form.useForm();
+  // 门禁直通角色：平台管理员（与后端 SandboxApprovalGate.isAdmin 一致）
+  const isAdmin =
+    loginService?.userInfo?.ownerId === 'kuscia-system' &&
+    loginService?.userInfo?.name === 'admin';
+
+  // Z-03 门禁：approval.required 开启且非 admin 时，创建/续期/回收须走申请单审批
+  useEffect(() => {
+    DataSandboxApi.approvalConfig()
+      .then((res) => setApprovalRequired(Boolean(responseData(res, {})?.required)))
+      .catch(() => setApprovalRequired(false));
+  }, []);
+
+  const gated = () => approvalRequired && !isAdmin;
+
+  const guideToApproval = (text: string) => {
+    Modal.confirm({
+      title: '需走审批流程',
+      content: `${text}需提交申请单审批，请在左侧「沙箱申请审批」菜单提交，审批通过后自动执行。`,
+      okText: '知道了',
+      cancelButtonProps: { style: { display: 'none' } },
+    });
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -242,7 +268,11 @@ export const SandboxManagerComponent = () => {
           <Button
             size="small"
             type="link"
-            onClick={() => action(record.id, 'RENEW', { days: 7 })}
+            onClick={() =>
+              gated()
+                ? guideToApproval('续期沙箱')
+                : action(record.id, 'RENEW', { days: 7 })
+            }
           >
             续期7天
           </Button>
@@ -255,7 +285,9 @@ export const SandboxManagerComponent = () => {
           </Button>
           <Popconfirm
             title="销毁后将回收全部配额，确定继续？"
-            onConfirm={() => action(record.id, 'DESTROY')}
+            onConfirm={() =>
+              gated() ? guideToApproval('回收沙箱') : action(record.id, 'DESTROY')
+            }
           >
             <Button danger size="small" type="link">
               销毁
@@ -274,8 +306,13 @@ export const SandboxManagerComponent = () => {
         <>
           <RefreshButton loading={loading} onClick={refresh} />
           <Button onClick={() => setImageOpen(true)}>环境镜像</Button>
-          <Button type="primary" onClick={() => setCreateOpen(true)}>
-            创建沙箱
+          <Button
+            type="primary"
+            onClick={() =>
+              gated() ? guideToApproval('创建沙箱') : setCreateOpen(true)
+            }
+          >
+            {gated() ? '申请沙箱' : '创建沙箱'}
           </Button>
         </>
       }

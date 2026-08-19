@@ -1,6 +1,7 @@
 import Icon from '@ant-design/icons';
 import {
   ApiOutlined,
+  AuditOutlined,
   DashboardOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
@@ -51,6 +52,13 @@ const ModelApprovalComponent = lazy(() =>
   import('@/modules/model-approval').then(({ ModelApprovalComponent: Component }) => ({
     default: Component,
   })),
+);
+const SandboxApprovalComponent = lazy(() =>
+  import('@/modules/sandbox-approval').then(
+    ({ SandboxApprovalComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
 );
 const UnifiedLogComponent = lazy(() =>
   import('@/modules/unified-log').then(({ UnifiedLogComponent: Component }) => ({
@@ -119,6 +127,12 @@ const menuItems: {
     icon: <ExperimentOutlined />,
     component: <SandboxManagerComponent />,
     key: 'sandbox-manager',
+  },
+  {
+    label: '沙箱申请审批',
+    icon: <AuditOutlined />,
+    component: <SandboxApprovalComponent />,
+    key: 'sandbox-approval',
   },
   {
     label: '资源管理',
