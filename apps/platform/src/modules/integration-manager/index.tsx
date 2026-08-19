@@ -6,6 +6,7 @@ import {
   Descriptions,
   Form,
   Input,
+  InputNumber,
   message,
   Modal,
   Space,
@@ -37,10 +38,12 @@ export const IntegrationManagerComponent = () => {
   const [loading, setLoading] = useState(false);
   const [clientOpen, setClientOpen] = useState(false);
   const [webhookOpen, setWebhookOpen] = useState(false);
+  const [oidcMappingOpen, setOidcMappingOpen] = useState(false);
   const [credential, setCredential] = useState<DataSandboxRecord>();
   const [clientForm] = Form.useForm();
   const [webhookForm] = Form.useForm();
   const [oidcForm] = Form.useForm();
+  const [oidcMappingForm] = Form.useForm();
   const [tenantForm] = Form.useForm();
   const [trustedForm] = Form.useForm();
   const [tenants, setTenants] = useState<DataSandboxRecord[]>([]);
@@ -146,6 +149,8 @@ export const IntegrationManagerComponent = () => {
                     { title: '名称', dataIndex: 'name' },
                     { title: 'Client ID', dataIndex: 'client_id' },
                     { title: '权限范围', dataIndex: 'scopes' },
+                    { title: '版本', dataIndex: 'secret_version' },
+                    { title: '到期时间', dataIndex: 'expires_at', render: formatTime },
                     {
                       title: '状态',
                       dataIndex: 'enabled',
@@ -160,17 +165,37 @@ export const IntegrationManagerComponent = () => {
                       title: '操作',
                       render: (_: unknown, row: DataSandboxRecord) =>
                         !!row.enabled && (
-                          <Button
-                            danger
-                            type="link"
-                            onClick={async () => {
-                              await DataSandboxApi.revokeClient(row.id);
-                              message.success('凭证已吊销');
-                              refresh();
-                            }}
-                          >
-                            吊销
-                          </Button>
+                          <Space>
+                            <Button
+                              type="link"
+                              onClick={async () => {
+                                try {
+                                  setCredential(
+                                    responseData(
+                                      await DataSandboxApi.rotateClient(row.id),
+                                      {},
+                                    ),
+                                  );
+                                  refresh();
+                                } catch (error: any) {
+                                  message.error(error.message);
+                                }
+                              }}
+                            >
+                              轮换
+                            </Button>
+                            <Button
+                              danger
+                              type="link"
+                              onClick={async () => {
+                                await DataSandboxApi.revokeClient(row.id);
+                                message.success('凭证已吊销');
+                                refresh();
+                              }}
+                            >
+                              吊销
+                            </Button>
+                          </Space>
                         ),
                     },
                   ]}
@@ -479,9 +504,9 @@ export const IntegrationManagerComponent = () => {
             children: (
               <Card title="OIDC 配置与发现测试">
                 <Alert
-                  type="warning"
+                  type="info"
                   showIcon
-                  message="MVP 仅保存配置并测试 Discovery，不替换当前数据沙箱登录链路。"
+                  message="OIDC Discovery 与角色映射分别配置；启用前应在身份提供方登记回调地址并完成登录联调。"
                   style={{ marginBottom: 16 }}
                 />
                 <Form
@@ -543,11 +568,76 @@ export const IntegrationManagerComponent = () => {
                     >
                       测试连接
                     </Button>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          const result = responseData(
+                            await DataSandboxApi.oidcLogin(
+                              `${window.location.origin}/api/v1alpha1/data-sandbox/integrations/oidc/callback`,
+                            ),
+                            {},
+                          );
+                          if (result.authorizationUrl) {
+                            window.location.assign(result.authorizationUrl);
+                          }
+                        } catch (error: any) {
+                          message.error(error.message);
+                        }
+                      }}
+                    >
+                      发起 OIDC 登录
+                    </Button>
                   </Space>
                 </Form>
                 <pre className={styles.code}>
                   {data.oidc?.discovery_message || '尚未执行 Discovery 测试'}
                 </pre>
+                <div style={{ margin: '20px 0 12px', textAlign: 'right' }}>
+                  <Button type="primary" onClick={() => setOidcMappingOpen(true)}>
+                    新增权限映射
+                  </Button>
+                </div>
+                <Table
+                  rowKey="id"
+                  size="small"
+                  dataSource={data.oidcMappings || []}
+                  columns={[
+                    { title: '声明字段', dataIndex: 'claim_name' },
+                    { title: '声明值', dataIndex: 'claim_value' },
+                    { title: '平台角色', dataIndex: 'platform_role' },
+                    { title: '机构 ID', dataIndex: 'owner_id' },
+                    {
+                      title: '状态',
+                      dataIndex: 'enabled',
+                      render: (value: number) => (
+                        <Tag color={value ? 'success' : 'default'}>
+                          {value ? '启用' : '停用'}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: '操作',
+                      render: (_: unknown, row: DataSandboxRecord) => (
+                        <Button
+                          danger
+                          type="link"
+                          onClick={() =>
+                            Modal.confirm({
+                              title: '删除该 OIDC 权限映射？',
+                              onOk: async () => {
+                                await DataSandboxApi.deleteOidcMapping(row.id);
+                                message.success('权限映射已删除');
+                                refresh();
+                              },
+                            })
+                          }
+                        >
+                          删除
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
               </Card>
             ),
           },
@@ -595,7 +685,7 @@ export const IntegrationManagerComponent = () => {
         <Form
           form={clientForm}
           layout="vertical"
-          initialValues={{ scopes: 'sandbox:read sandbox:write' }}
+          initialValues={{ scopes: 'sandbox:read sandbox:write', validityDays: 90 }}
           onFinish={async (values) => {
             try {
               const result = responseData(
@@ -617,6 +707,9 @@ export const IntegrationManagerComponent = () => {
           <Form.Item name="scopes" label="权限范围">
             <Input />
           </Form.Item>
+          <Form.Item name="validityDays" label="有效期（天）">
+            <InputNumber min={1} max={3650} style={{ width: '100%' }} />
+          </Form.Item>
         </Form>
       </Modal>
       <Modal
@@ -633,6 +726,45 @@ export const IntegrationManagerComponent = () => {
         <pre className={styles.code}>{`Client ID: ${
           credential?.client_id || ''
         }\nClient Secret: ${credential?.client_secret || ''}`}</pre>
+      </Modal>
+      <Modal
+        title="新增 OIDC 权限映射"
+        open={oidcMappingOpen}
+        onCancel={() => setOidcMappingOpen(false)}
+        onOk={() => oidcMappingForm.submit()}
+      >
+        <Form
+          form={oidcMappingForm}
+          layout="vertical"
+          initialValues={{ claimName: 'groups', platformRole: 'USER', enabled: true }}
+          onFinish={async (values) => {
+            try {
+              await DataSandboxApi.saveOidcMapping(values);
+              message.success('OIDC 权限映射已保存');
+              setOidcMappingOpen(false);
+              oidcMappingForm.resetFields();
+              refresh();
+            } catch (error: any) {
+              message.error(error.message);
+            }
+          }}
+        >
+          <Form.Item name="claimName" label="声明字段" rules={[{ required: true }]}>
+            <Input placeholder="groups" />
+          </Form.Item>
+          <Form.Item name="claimValue" label="声明值" rules={[{ required: true }]}>
+            <Input placeholder="data-sandbox-admins" />
+          </Form.Item>
+          <Form.Item name="platformRole" label="平台角色" rules={[{ required: true }]}>
+            <Input placeholder="ADMIN / OPERATOR / USER" />
+          </Form.Item>
+          <Form.Item name="ownerId" label="机构 ID">
+            <Input />
+          </Form.Item>
+          <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+        </Form>
       </Modal>
       <Modal
         title="新增 Webhook"

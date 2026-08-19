@@ -74,6 +74,8 @@ export const DataSandboxApi = {
   createClient: (data: DataSandboxRecord) =>
     post<DataSandboxRecord>('/integrations/clients/create', data),
   revokeClient: (id: string) => post('/integrations/clients/revoke', { id }),
+  rotateClient: (id: string) =>
+    post<DataSandboxRecord>('/integrations/clients/rotate', { id }),
   saveWebhook: (data: DataSandboxRecord) =>
     post<DataSandboxRecord>('/integrations/webhooks/save', data),
   testWebhook: (id: string) =>
@@ -83,6 +85,11 @@ export const DataSandboxApi = {
   saveOidc: (data: DataSandboxRecord) =>
     post<DataSandboxRecord>('/integrations/oidc/save', data),
   testOidc: () => post<DataSandboxRecord>('/integrations/oidc/test'),
+  oidcLogin: (redirectUri: string) =>
+    get<DataSandboxRecord>('/integrations/oidc/login', { redirectUri }),
+  saveOidcMapping: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/integrations/oidc/mappings/save', data),
+  deleteOidcMapping: (id: string) => post('/integrations/oidc/mappings/delete', { id }),
 
   tenants: () => get<DataSandboxRecord[]>('/tenants'),
   openTenant: (data: DataSandboxRecord) =>
@@ -114,7 +121,14 @@ export const DataSandboxApi = {
   createBackup: () => post<DataSandboxRecord>('/operations/backups/create'),
   restoreBackup: (id: string) =>
     post<DataSandboxRecord>('/operations/backups/restore', { id }),
+  verifyBackup: (id: string) =>
+    post<DataSandboxRecord>('/operations/backups/verify', { id }),
+  drillRecovery: (id: string) =>
+    post<DataSandboxRecord>('/operations/backups/drill', { id }),
+  rollbackRecoveryPoint: (id: string) =>
+    post<DataSandboxRecord>('/operations/recovery-points/rollback', { id }),
   diagnostics: () => post<DataSandboxRecord>('/operations/diagnostics'),
+  securityScan: () => post<DataSandboxRecord>('/operations/security/scan'),
   help: () => get<DataSandboxRecord[]>('/operations/help'),
   createTicket: (data: DataSandboxRecord) =>
     post<DataSandboxRecord>('/operations/tickets/create', data),

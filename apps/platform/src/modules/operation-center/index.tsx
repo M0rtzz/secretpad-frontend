@@ -32,6 +32,7 @@ export const OperationCenterComponent = () => {
   });
   const [help, setHelp] = useState<DataSandboxRecord[]>([]);
   const [diagnostics, setDiagnostics] = useState<DataSandboxRecord>();
+  const [securityScan, setSecurityScan] = useState<DataSandboxRecord>();
   const [loading, setLoading] = useState(false);
   const [ticketOpen, setTicketOpen] = useState(false);
   const [ticketForm] = Form.useForm();
@@ -74,6 +75,18 @@ export const OperationCenterComponent = () => {
             }}
           >
             一键诊断
+          </Button>
+          <Button
+            onClick={async () => {
+              try {
+                setSecurityScan(responseData(await DataSandboxApi.securityScan(), {}));
+                refresh();
+              } catch (error: any) {
+                message.error(error.message);
+              }
+            }}
+          >
+            安全扫描
           </Button>
           <Button type="primary" onClick={() => setTicketOpen(true)}>
             提交工单
@@ -170,28 +183,120 @@ export const OperationCenterComponent = () => {
               render: (v: number) => (v ? `${(v / 1024 / 1024).toFixed(2)} MB` : '-'),
             },
             { title: '创建时间', dataIndex: 'created_at', render: formatTime },
+            { title: '校验时间', dataIndex: 'verified_at', render: formatTime },
+            {
+              title: '演练',
+              dataIndex: 'drill_status',
+              render: (value: string) => (
+                <Tag
+                  color={
+                    value === 'PASSED'
+                      ? 'success'
+                      : value === 'FAILED'
+                      ? 'error'
+                      : 'default'
+                  }
+                >
+                  {value || 'NOT_RUN'}
+                </Tag>
+              ),
+            },
             {
               title: '操作',
               render: (_: unknown, row: DataSandboxRecord) =>
-                row.status === 'COMPLETED' && (
-                  <Button
-                    type="link"
-                    onClick={async () => {
-                      try {
+                ['COMPLETED', 'RESTORE_STAGED'].includes(row.status) && (
+                  <Space size={0}>
+                    <Button
+                      type="link"
+                      onClick={async () => {
+                        try {
+                          await DataSandboxApi.verifyBackup(row.id);
+                          message.success('备份完整性校验通过');
+                          refresh();
+                        } catch (error: any) {
+                          message.error(error.message);
+                        }
+                      }}
+                    >
+                      校验
+                    </Button>
+                    <Button
+                      type="link"
+                      onClick={async () => {
+                        try {
+                          await DataSandboxApi.drillRecovery(row.id);
+                          message.success('恢复演练通过');
+                          refresh();
+                        } catch (error: any) {
+                          message.error(error.message);
+                        }
+                      }}
+                    >
+                      演练
+                    </Button>
+                    <Button
+                      type="link"
+                      onClick={async () => {
+                        try {
+                          const result = responseData(
+                            await DataSandboxApi.restoreBackup(row.id),
+                            {},
+                          );
+                          Modal.info({ title: '恢复已暂存', content: result.message });
+                          refresh();
+                        } catch (error: any) {
+                          message.error(error.message);
+                        }
+                      }}
+                    >
+                      恢复暂存
+                    </Button>
+                  </Space>
+                ),
+            },
+          ]}
+        />
+      </Card>
+      <Card className={styles.section} title="恢复点管理">
+        <Table
+          rowKey="id"
+          size="small"
+          dataSource={overview.recoveryPoints || []}
+          columns={[
+            { title: '恢复点 ID', dataIndex: 'id' },
+            { title: '备份 ID', dataIndex: 'backup_id' },
+            { title: '类型', dataIndex: 'point_type' },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              render: (value: string) => <Tag>{value}</Tag>,
+            },
+            { title: '校验时间', dataIndex: 'verified_at', render: formatTime },
+            { title: '演练状态', dataIndex: 'drill_status' },
+            { title: '创建时间', dataIndex: 'created_at', render: formatTime },
+            {
+              title: '操作',
+              render: (_: unknown, row: DataSandboxRecord) => (
+                <Button
+                  type="link"
+                  onClick={() =>
+                    Modal.confirm({
+                      title: '暂存该恢复点用于回滚？',
+                      content: '此操作只生成待恢复数据库，不会直接覆盖当前运行库。',
+                      onOk: async () => {
                         const result = responseData(
-                          await DataSandboxApi.restoreBackup(row.id),
+                          await DataSandboxApi.rollbackRecoveryPoint(row.id),
                           {},
                         );
-                        Modal.info({ title: '恢复已暂存', content: result.message });
+                        message.success(result.message || '恢复点已暂存');
                         refresh();
-                      } catch (error: any) {
-                        message.error(error.message);
-                      }
-                    }}
-                  >
-                    恢复暂存
-                  </Button>
-                ),
+                      },
+                    })
+                  }
+                >
+                  回滚暂存
+                </Button>
+              ),
             },
           ]}
         />
@@ -257,6 +362,39 @@ export const OperationCenterComponent = () => {
             },
             { title: '详情', dataIndex: 'message' },
           ]}
+        />
+      </Modal>
+      <Modal
+        title="安全扫描结果"
+        width={820}
+        open={!!securityScan}
+        onCancel={() => setSecurityScan(undefined)}
+        footer={<Button onClick={() => setSecurityScan(undefined)}>关闭</Button>}
+      >
+        <Alert
+          type={securityScan?.status === 'PASSED' ? 'success' : 'warning'}
+          showIcon
+          message={`扫描状态：${securityScan?.status || '-'}`}
+          description="问题按识别、分派、修复、复测、关闭流程处理；报告不包含密钥明文。"
+          style={{ marginBottom: 12 }}
+        />
+        <Table
+          rowKey="code"
+          pagination={false}
+          dataSource={securityScan?.findings || []}
+          columns={[
+            { title: '风险项', dataIndex: 'code' },
+            {
+              title: '等级',
+              dataIndex: 'severity',
+              render: (value: string) => (
+                <Tag color={value === 'HIGH' ? 'error' : 'warning'}>{value}</Tag>
+              ),
+            },
+            { title: '影响数量', dataIndex: 'affected' },
+            { title: '修复建议', dataIndex: 'remediation' },
+          ]}
+          locale={{ emptyText: '未发现安全风险' }}
         />
       </Modal>
       <Modal
