@@ -215,6 +215,24 @@ export const DataGovernanceComponent = () => {
     setTaskOpen(true);
   };
 
+  /** 选择策略后自动填充抽样/脱敏配置（可再手工覆盖，覆盖后按内联执行）；清空则还原为空配置。 */
+  const onPolicyChange = (policyId?: string) => {
+    const policy = (policies || []).find((p) => p.id === policyId);
+    if (policy) {
+      taskForm.setFieldsValue({
+        samplingMethod: policy.sampling_method || '',
+        samplingParams: policy.sampling_params || '',
+        maskingColumns: policy.masking_columns || '',
+      });
+    } else {
+      taskForm.setFieldsValue({
+        samplingMethod: undefined,
+        samplingParams: undefined,
+        maskingColumns: undefined,
+      });
+    }
+  };
+
   const previewSource = async () => {
     const { nodeId, datatableId, limit } = taskForm.getFieldsValue();
     if (!nodeId || !datatableId) {
@@ -233,9 +251,59 @@ export const DataGovernanceComponent = () => {
     }
   };
 
+  /** 组装后端契约：内联抽样 {method,...params}、内联脱敏 [{column,method,params}]、policyId；剔除表单专用字段。
+   *  后端 DataGovernanceService 仅识别 sampling(Map)/masking(List)/policyId，字段名不匹配会被静默丢弃。 */
+  const buildGovernanceTaskPayload = (values: DataSandboxRecord) => {
+    const payload: DataSandboxRecord = { ...values };
+    delete payload.limit; // 预览行数，非任务参数
+    delete payload.samplingMethod;
+    delete payload.samplingParams;
+    delete payload.maskingColumns;
+    if ((payload.execMode || 'BUILTIN') === 'CUSTOM') {
+      delete payload.sampling;
+      delete payload.masking;
+      return payload;
+    }
+    // 抽样：samplingMethod + samplingParams(JSON) → {method, ...params}
+    if (values.samplingMethod) {
+      const sampling: DataSandboxRecord = { method: values.samplingMethod };
+      if (values.samplingParams) {
+        try {
+          Object.assign(sampling, JSON.parse(values.samplingParams));
+        } catch {
+          throw new Error('抽样参数 JSON 格式错误');
+        }
+      }
+      payload.sampling = sampling;
+    }
+    // 脱敏：maskingColumns(JSON 数组) → [{column,method,params}]
+    if (values.maskingColumns) {
+      try {
+        const parsed = JSON.parse(values.maskingColumns);
+        if (!Array.isArray(parsed)) {
+          throw new Error('脱敏列配置必须是 JSON 数组');
+        }
+        if (parsed.length > 0) {
+          payload.masking = parsed;
+        }
+      } catch (error: any) {
+        if (error?.message?.includes('必须是')) throw error;
+        throw new Error('脱敏列配置 JSON 格式错误');
+      }
+    }
+    return payload;
+  };
+
   const submitTask = async (values: DataSandboxRecord) => {
+    let payload: DataSandboxRecord;
     try {
-      responseData(await DataGovernanceApi.submitTask(values), {});
+      payload = buildGovernanceTaskPayload(values);
+    } catch (error: any) {
+      message.error(error.message || '参数校验失败');
+      return;
+    }
+    try {
+      responseData(await DataGovernanceApi.submitTask(payload), {});
       message.success('任务已提交');
       setTaskOpen(false);
       taskForm.resetFields();
@@ -673,6 +741,25 @@ export const DataGovernanceComponent = () => {
               options={Object.entries(execModeLabels).map(([value, label]) => ({
                 value,
                 label,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="policyId"
+            label="复用策略（可选）"
+            tooltip="选择已有策略后自动填充下方抽样/脱敏配置，可直接按策略执行所选数据的抽取与脱敏；也可在其基础上手工调整（内联覆盖策略）"
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择已有策略（gp-xxx），自动填充抽样/脱敏配置"
+              onChange={onPolicyChange}
+              options={(policies || []).map((p) => ({
+                value: p.id,
+                label: `${p.name}（${
+                  policyTypeLabels[p.policy_type] || p.policy_type
+                }）`,
               }))}
             />
           </Form.Item>
