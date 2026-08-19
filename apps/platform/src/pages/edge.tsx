@@ -7,6 +7,7 @@ import {
   DeploymentUnitOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
+  FundOutlined,
   SafetyCertificateOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
@@ -93,6 +94,11 @@ const OperationCenterComponent = lazy(() =>
     }),
   ),
 );
+const ModelCenterComponent = lazy(() =>
+  import('@/modules/model-center').then(({ ModelCenterComponent: Component }) => ({
+    default: Component,
+  })),
+);
 
 const menuItems: {
   label: string;
@@ -159,6 +165,12 @@ const menuItems: {
     icon: <CodeOutlined />,
     component: <DataDevComponent />,
     key: 'data-dev',
+  },
+  {
+    label: '模型中心',
+    icon: <FundOutlined />,
+    component: <ModelCenterComponent />,
+    key: 'model-center',
   },
   {
     label: '资源管理',

@@ -259,6 +259,85 @@ export const DataDevApi = {
     devPost<DataSandboxRecord>('/tasks/mount', data),
 };
 
+// Z-06 模型中心：/api/v1alpha1/models（模型注册/审批/测试）+ /api/v1alpha1/model-api（发布/凭证/调用）
+const modelBase = '/api/v1alpha1/models';
+const modelApiBase = '/api/v1alpha1/model-api';
+
+const modelGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${modelBase}${path}`, { method: 'GET', params });
+
+const modelPost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${modelBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+const modelApiGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${modelApiBase}${path}`, { method: 'GET', params });
+
+const modelApiPost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${modelApiBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+export const DataModelApi = {
+  /* 模型注册 */
+  models: (params?: DataSandboxRecord) => modelGet<DataSandboxRecord[]>('', params),
+  modelDetail: (id: string) => modelGet<DataSandboxRecord>('/detail', { id }),
+  register: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/register', data),
+  updateModel: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/update', data),
+  deleteModel: (id: string) => modelPost('/delete', { id }),
+  /* 审批 */
+  submitApproval: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/approvals/submit', data),
+  approvals: (params?: DataSandboxRecord) =>
+    modelGet<DataSandboxRecord[]>('/approvals', params),
+  approvalDetail: (id: string) =>
+    modelGet<DataSandboxRecord>('/approvals/detail', { id }),
+  approvalHistory: (id: string) =>
+    modelGet<DataSandboxRecord[]>('/approvals/history', { id }),
+  approvalAction: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/approvals/action', data),
+  /* 测试 */
+  executeTest: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/tests/execute', data),
+  tests: (params?: DataSandboxRecord) =>
+    modelGet<DataSandboxRecord[]>('/tests', params),
+  testDetail: (id: string) => modelGet<DataSandboxRecord>('/tests/detail', { id }),
+  testLog: (id: string, attempt?: number) =>
+    modelGet<DataSandboxRecord>('/tests/log', { id, attempt }),
+  cancelTest: (id: string) => modelPost<DataSandboxRecord>('/tests/cancel', { id }),
+  retryTest: (id: string) => modelPost<DataSandboxRecord>('/tests/retry', { id }),
+  /* API 发布 */
+  createApi: (data: DataSandboxRecord) =>
+    modelApiPost<DataSandboxRecord>('/create', data),
+  apis: (params?: DataSandboxRecord) =>
+    modelApiGet<DataSandboxRecord[]>('/list', params),
+  apiDetail: (id: string) => modelApiGet<DataSandboxRecord>('/detail', { id }),
+  updateApi: (data: DataSandboxRecord) =>
+    modelApiPost<DataSandboxRecord>('/update', data),
+  regenerateSecret: (id: string) =>
+    modelApiPost<DataSandboxRecord>('/regenerate-secret', { id }),
+  enableApi: (id: string) => modelApiPost<DataSandboxRecord>('/enable', { id }),
+  disableApi: (id: string) => modelApiPost<DataSandboxRecord>('/disable', { id }),
+  deleteApi: (id: string) => modelApiPost('/delete', { id }),
+  /* 调用（两路鉴权） */
+  invokeWithCredential: (appId: string, secret: string, data: DataSandboxRecord) =>
+    request<DataSandboxResponse<DataSandboxRecord>>(`${modelApiBase}/invoke`, {
+      method: 'POST',
+      data,
+      headers: { 'X-APP-ID': appId, 'X-APP-SECRET': secret },
+    }),
+  invokeWithToken: (data: DataSandboxRecord) =>
+    request<DataSandboxResponse<DataSandboxRecord>>(`${modelApiBase}/invoke`, {
+      method: 'POST',
+      data,
+    }),
+};
+
 export const responseData = <T>(response: DataSandboxResponse<T>, fallback: T): T => {
   if (response.status?.code !== 0) {
     throw new Error(response.status?.msg || '请求失败');
