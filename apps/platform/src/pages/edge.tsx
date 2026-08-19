@@ -3,6 +3,7 @@ import {
   ApiOutlined,
   AuditOutlined,
   DashboardOutlined,
+  DeploymentUnitOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
   SafetyCertificateOutlined,
@@ -56,6 +57,13 @@ const ModelApprovalComponent = lazy(() =>
 const SandboxApprovalComponent = lazy(() =>
   import('@/modules/sandbox-approval').then(
     ({ SandboxApprovalComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
+const DataGovernanceComponent = lazy(() =>
+  import('@/modules/data-governance').then(
+    ({ DataGovernanceComponent: Component }) => ({
       default: Component,
     }),
   ),
@@ -133,6 +141,12 @@ const menuItems: {
     icon: <AuditOutlined />,
     component: <SandboxApprovalComponent />,
     key: 'sandbox-approval',
+  },
+  {
+    label: '数据治理',
+    icon: <DeploymentUnitOutlined />,
+    component: <DataGovernanceComponent />,
+    key: 'data-governance',
   },
   {
     label: '资源管理',

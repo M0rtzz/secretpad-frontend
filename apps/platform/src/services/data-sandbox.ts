@@ -112,6 +112,52 @@ export const DataSandboxApi = {
   },
 };
 
+// Z-04 数据治理（抽样/脱敏）：独立前缀 /api/v1alpha1/data-governance
+const governanceBase = '/api/v1alpha1/data-governance';
+
+const governanceGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${governanceBase}${path}`, {
+    method: 'GET',
+    params,
+  });
+
+const governancePost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${governanceBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+export const DataGovernanceApi = {
+  // 策略
+  policies: (params?: DataSandboxRecord) =>
+    governanceGet<DataSandboxRecord[]>('/policies', params),
+  policyDetail: (id: string) =>
+    governanceGet<DataSandboxRecord>('/policies/detail', { id }),
+  createPolicy: (data: DataSandboxRecord) =>
+    governancePost<DataSandboxRecord>('/policies', data),
+  updatePolicy: (data: DataSandboxRecord) =>
+    governancePost<DataSandboxRecord>('/policies/update', data),
+  deletePolicy: (id: string) => governancePost('/policies/delete', { id }),
+  // 任务
+  tasks: (params?: DataSandboxRecord) =>
+    governanceGet<DataSandboxRecord[]>('/tasks', params),
+  taskDetail: (id: string) => governanceGet<DataSandboxRecord>('/tasks/detail', { id }),
+  submitTask: (data: DataSandboxRecord) =>
+    governancePost<DataSandboxRecord>('/tasks/submit', data),
+  cancelTask: (id: string) => governancePost('/tasks/cancel', { id }),
+  retryTask: (id: string) => governancePost<DataSandboxRecord>('/tasks/retry', { id }),
+  // 结果数据集
+  results: (nodeId = '') =>
+    governanceGet<DataSandboxRecord[]>('/tasks/results', { nodeId }),
+  mountResult: (data: DataSandboxRecord) =>
+    governancePost<DataSandboxRecord>('/tasks/mount', data),
+  // 血缘 / 预览
+  lineage: (nodeId = '', datatableId = '') =>
+    governanceGet<DataSandboxRecord[]>('/lineage', { nodeId, datatableId }),
+  preview: (nodeId: string, datatableId: string, limit = 20) =>
+    governanceGet<DataSandboxRecord>('/preview', { nodeId, datatableId, limit }),
+};
+
 export const responseData = <T>(response: DataSandboxResponse<T>, fallback: T): T => {
   if (response.status?.code !== 0) {
     throw new Error(response.status?.msg || '请求失败');
