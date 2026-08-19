@@ -151,6 +151,9 @@ export const DataGovernanceApi = {
     governanceGet<DataSandboxRecord[]>('/tasks/results', { nodeId }),
   mountResult: (data: DataSandboxRecord) =>
     governancePost<DataSandboxRecord>('/tasks/mount', data),
+  // 结果数据展示（仅脱敏后结果可返回行数据；表头携带数据源）
+  viewResult: (taskId: string) =>
+    governanceGet<DataSandboxRecord>('/tasks/results/view', { taskId }),
   // 血缘 / 预览
   lineage: (nodeId = '', datatableId = '') =>
     governanceGet<DataSandboxRecord[]>('/lineage', { nodeId, datatableId }),

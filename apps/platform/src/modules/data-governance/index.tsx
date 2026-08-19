@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Drawer,
   Form,
@@ -88,6 +89,10 @@ export const DataGovernanceComponent = () => {
   const [resultsOpen, setResultsOpen] = useState(false);
   const [mountTask, setMountTask] = useState<DataSandboxRecord>();
   const [projects, setProjects] = useState<DataSandboxRecord[]>([]);
+  /* 结果数据展示（仅脱敏后结果可查看；表头携带数据源） */
+  const [viewItem, setViewItem] = useState<DataSandboxRecord>();
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewLoading, setViewLoading] = useState(false);
 
   /* --------------------------------- 血缘 --------------------------------- */
   const [lineage, setLineage] = useState<DataSandboxRecord[]>([]);
@@ -259,6 +264,22 @@ export const DataGovernanceComponent = () => {
   const openDetail = async (row: DataSandboxRecord) => {
     setDetailItem(responseData(await DataGovernanceApi.taskDetail(row.id), {}));
     setDetailOpen(true);
+  };
+
+  /** 查看结果数据：仅脱敏后的结果返回行（masked=true）；未脱敏显示提示（含真实数据不可展示）。 */
+  const openResultView = async (row: DataSandboxRecord) => {
+    setViewLoading(true);
+    setViewOpen(true);
+    try {
+      setViewItem(
+        responseData(await DataGovernanceApi.viewResult(row.id), { id: row.id }),
+      );
+    } catch (error: any) {
+      message.error(error.message || '加载结果数据失败');
+      setViewItem(undefined);
+    } finally {
+      setViewLoading(false);
+    }
   };
 
   const mountResult = async () => {
@@ -506,6 +527,11 @@ export const DataGovernanceComponent = () => {
                               onClick={() => directTask(row, 'retry')}
                             >
                               重试
+                            </Button>
+                          )}
+                          {row.status === 'SUCCEEDED' && row.result_datatable_id && (
+                            <Button type="link" onClick={() => openResultView(row)}>
+                              查看结果
                             </Button>
                           )}
                           <Button type="link" onClick={() => openDetail(row)}>
@@ -841,19 +867,103 @@ export const DataGovernanceComponent = () => {
             { title: '完成时间', dataIndex: 'finished_at', render: formatTime },
             {
               title: '操作',
-              width: 120,
+              width: 160,
               render: (_: unknown, row: DataSandboxRecord) => (
-                <Button
-                  type="link"
-                  onClick={() => setMountTask({ ...row, mountProjectId: '' })}
-                >
-                  挂载项目
-                </Button>
+                <Space wrap>
+                  <Button type="link" onClick={() => openResultView(row)}>
+                    查看
+                  </Button>
+                  <Button
+                    type="link"
+                    onClick={() => setMountTask({ ...row, mountProjectId: '' })}
+                  >
+                    挂载项目
+                  </Button>
+                </Space>
               ),
             },
           ]}
         />
       </Modal>
+
+      {/* 结果数据展示（仅脱敏后结果可查看；表头携带数据源） */}
+      <Drawer
+        title={`结果数据：${viewItem?.resultName || viewItem?.resultDatatableId || ''}`}
+        width={980}
+        open={viewOpen}
+        loading={viewLoading}
+        onClose={() => setViewOpen(false)}
+      >
+        {viewItem && (
+          <>
+            {/* 数据源 / 结果表 头部 */}
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 6,
+                background: '#f5f7fa',
+                marginBottom: 16,
+              }}
+            >
+              <Space wrap size="middle">
+                <span>
+                  数据源：
+                  <Tag color="blue">
+                    {viewItem.sourceName || viewItem.sourceDatatableId}（
+                    {viewItem.sourceNodeId}/{viewItem.sourceDatatableId}）
+                  </Tag>
+                </span>
+                <span>→</span>
+                <span>
+                  结果表：
+                  <Tag color="green">
+                    {viewItem.resultName || viewItem.resultDatatableId}（
+                    {viewItem.resultNodeId}/{viewItem.resultDatatableId}）
+                  </Tag>
+                </span>
+                {viewItem.samplingMethod && (
+                  <Tag color="cyan">抽样：{viewItem.samplingMethod}</Tag>
+                )}
+                <Tag color={viewItem.masked ? 'orange' : 'default'}>
+                  {viewItem.masked ? '已脱敏' : '未脱敏'}
+                </Tag>
+                <span>
+                  记录数：{viewItem.sourceRows || 0} → {viewItem.resultRows || 0}
+                </span>
+              </Space>
+            </div>
+
+            {viewItem.masked ? (
+              <Table
+                rowKey={(r, i) => `${i}`}
+                size="small"
+                dataSource={(viewItem.rows || []).map((r: string[], i: number) => ({
+                  __i: i,
+                  __row: r,
+                }))}
+                pagination={{ pageSize: 20 }}
+                scroll={{ x: 'max-content' }}
+                columns={(viewItem.header || []).map((col: string, i: number) => ({
+                  title: col,
+                  dataIndex: '__row',
+                  width: 140,
+                  render: (_: unknown, row: { __row: string[] }) => row.__row[i],
+                }))}
+              />
+            ) : (
+              <Alert
+                type="warning"
+                showIcon
+                message="该结果未经脱敏，含真实数据，不予展示"
+                description={
+                  viewItem.message ||
+                  '仅经脱敏（掩码/替换/哈希/取整/空值清除）处理后的结果数据可在此查看；纯抽样或自定义代码输出不在展示范围。'
+                }
+              />
+            )}
+          </>
+        )}
+      </Drawer>
 
       {/* 挂载项目 */}
       <Modal
