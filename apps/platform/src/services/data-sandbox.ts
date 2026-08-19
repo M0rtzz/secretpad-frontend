@@ -84,6 +84,32 @@ export const DataSandboxApi = {
     post<DataSandboxRecord>('/integrations/oidc/save', data),
   testOidc: () => post<DataSandboxRecord>('/integrations/oidc/test'),
 
+  tenants: () => get<DataSandboxRecord[]>('/tenants'),
+  openTenant: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/tenants/open', data),
+  resizeTenant: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/tenants/resize', data),
+  deployTenant: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/tenants/deploy', data),
+  tenantUsage: (tenantId: string) =>
+    get<DataSandboxRecord[]>('/billing/usage', { tenantId }),
+  calculateBilling: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/billing/calculate', data),
+  reportBilling: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/billing/report', data),
+  trustedExchanges: (tenantId = '') =>
+    get<DataSandboxRecord[]>('/trusted/exchanges', { tenantId }),
+  trustedPush: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/trusted/push', data),
+  trustedCallback: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/trusted/callback', data),
+  verifyTrusted: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/trusted/verify', data),
+  trustedPolicies: (tenantId: string) =>
+    get<DataSandboxRecord[]>('/trusted/policies', { tenantId }),
+  saveTrustedPolicy: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/trusted/policies/save', data),
+
   operations: () => get<DataSandboxRecord>('/operations'),
   createBackup: () => post<DataSandboxRecord>('/operations/backups/create'),
   restoreBackup: (id: string) =>

@@ -1,3 +1,4 @@
+import { CopyOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -17,17 +18,14 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  DataSandboxApi,
-  DataSandboxRecord,
-  responseData,
-} from '@/services/data-sandbox';
-import {
   formatTime,
   MvpNotice,
   MvpPage,
   RefreshButton,
 } from '@/modules/data-sandbox-mvp/common';
 import styles from '@/modules/data-sandbox-mvp/index.less';
+import { DataSandboxApi, responseData } from '@/services/data-sandbox';
+import type { DataSandboxRecord } from '@/services/data-sandbox';
 
 export const IntegrationManagerComponent = () => {
   const [data, setData] = useState<DataSandboxRecord>({
@@ -43,12 +41,48 @@ export const IntegrationManagerComponent = () => {
   const [clientForm] = Form.useForm();
   const [webhookForm] = Form.useForm();
   const [oidcForm] = Form.useForm();
+  const [tenantForm] = Form.useForm();
+  const [trustedForm] = Form.useForm();
+  const [tenants, setTenants] = useState<DataSandboxRecord[]>([]);
+  const [exchanges, setExchanges] = useState<DataSandboxRecord[]>([]);
+  const [tenantSecret, setTenantSecret] = useState<DataSandboxRecord>();
+
+  const copyText = async (text: string, label: string) => {
+    if (!text) {
+      message.error(`${label}为空，无法复制`);
+      return;
+    }
+    try {
+      if (!navigator.clipboard || !window.isSecureContext) {
+        throw new Error('Clipboard API is unavailable');
+      }
+      await navigator.clipboard.writeText(text);
+      message.success(`${label}已复制`);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.readOnly = true;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, text.length);
+      const copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      message[copied ? 'success' : 'error'](
+        copied ? `${label}已复制` : `${label}复制失败，请手动复制`,
+      );
+    }
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const next = responseData(await DataSandboxApi.integrations(), {});
       setData(next);
+      setTenants(responseData(await DataSandboxApi.tenants(), []));
+      setExchanges(responseData(await DataSandboxApi.trustedExchanges(), []));
       oidcForm.setFieldsValue({
         issuer: next.oidc?.issuer,
         clientId: next.oidc?.client_id,
@@ -235,6 +269,211 @@ export const IntegrationManagerComponent = () => {
             ),
           },
           {
+            key: 'tenant',
+            label: '租户与可信交换',
+            children: (
+              <>
+                <Card
+                  size="small"
+                  title="租户开通与自动部署"
+                  style={{ marginBottom: 16 }}
+                >
+                  <Form
+                    form={tenantForm}
+                    layout="inline"
+                    onFinish={async (values) => {
+                      try {
+                        const result = responseData(
+                          await DataSandboxApi.openTenant(values),
+                          {},
+                        );
+                        setTenantSecret(result);
+                        tenantForm.resetFields();
+                        message.success('租户已开通');
+                        refresh();
+                      } catch (error: any) {
+                        message.error(error.message);
+                      }
+                    }}
+                  >
+                    <Form.Item
+                      name="name"
+                      label="租户名称"
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder="实验室租户" />
+                    </Form.Item>
+                    <Form.Item name="ownerId" label="机构 ID">
+                      <Input placeholder="默认当前机构" />
+                    </Form.Item>
+                    <Form.Item name="cpuCores" label="CPU">
+                      <Input placeholder="4" />
+                    </Form.Item>
+                    <Form.Item name="memoryGb" label="内存 GB">
+                      <Input placeholder="16" />
+                    </Form.Item>
+                    <Form.Item name="storageGb" label="存储 GB">
+                      <Input placeholder="100" />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit">
+                      开通租户
+                    </Button>
+                  </Form>
+                  <Table
+                    style={{ marginTop: 16 }}
+                    rowKey="id"
+                    size="small"
+                    dataSource={tenants}
+                    columns={[
+                      { title: '名称', dataIndex: 'name' },
+                      { title: '机构', dataIndex: 'owner_id' },
+                      {
+                        title: '状态',
+                        dataIndex: 'status',
+                        render: (v: string) => (
+                          <Tag color={v === 'ACTIVE' ? 'success' : 'processing'}>
+                            {v}
+                          </Tag>
+                        ),
+                      },
+                      {
+                        title: '规格',
+                        render: (_: unknown, row: DataSandboxRecord) =>
+                          `${row.cpu_cores} CPU / ${row.memory_gb} GB / ${row.storage_gb} GB`,
+                      },
+                      {
+                        title: '操作',
+                        render: (_: unknown, row: DataSandboxRecord) => (
+                          <Space>
+                            <Button
+                              size="small"
+                              onClick={async () => {
+                                await DataSandboxApi.deployTenant({ tenantId: row.id });
+                                message.success('部署已提交');
+                                refresh();
+                              }}
+                            >
+                              部署
+                            </Button>
+                            <Button
+                              size="small"
+                              onClick={async () => {
+                                const bill = responseData(
+                                  await DataSandboxApi.calculateBilling({
+                                    tenantId: row.id,
+                                  }),
+                                  {},
+                                );
+                                message.success(
+                                  `费用已计算：${bill.amount} ${bill.currency}`,
+                                );
+                                refresh();
+                              }}
+                            >
+                              计费
+                            </Button>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                </Card>
+                <Card size="small" title="可信平台交换（签名、验签、幂等）">
+                  <Form
+                    form={trustedForm}
+                    layout="inline"
+                    onFinish={async (values) => {
+                      try {
+                        responseData(await DataSandboxApi.trustedPush(values), {});
+                        message.success('数据推送已记录');
+                        trustedForm.resetFields();
+                        await refresh();
+                      } catch (error: any) {
+                        message.error(error.message);
+                      }
+                    }}
+                  >
+                    <Form.Item
+                      name="tenantId"
+                      label="租户 ID"
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder="ten-..." />
+                    </Form.Item>
+                    <Form.Item
+                      name="eventType"
+                      label="事件"
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder="data.push" />
+                    </Form.Item>
+                    <Form.Item
+                      name="idempotencyKey"
+                      label="幂等键"
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder="request-001" />
+                    </Form.Item>
+                    <Form.Item name="payload" label="数据">
+                      <Input placeholder='{"dataset":"demo"}' />
+                    </Form.Item>
+                    <Form.Item name="signingSecret" label="签名密钥">
+                      <Input.Password placeholder="租户开通时生成的密钥" />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit">
+                      签名推送
+                    </Button>
+                  </Form>
+                  <Table
+                    style={{ marginTop: 16 }}
+                    rowKey="id"
+                    size="small"
+                    dataSource={exchanges}
+                    columns={[
+                      { title: '事件', dataIndex: 'event_type' },
+                      { title: '方向', dataIndex: 'direction' },
+                      { title: '幂等键', dataIndex: 'idempotency_key' },
+                      {
+                        title: '状态',
+                        dataIndex: 'status',
+                        render: (v: string) => (
+                          <Tag color={v === 'SUCCESS' ? 'success' : 'error'}>{v}</Tag>
+                        ),
+                      },
+                      {
+                        title: '签名值（非密钥）',
+                        dataIndex: 'signature',
+                        render: (value: string) => (
+                          <Space size={4}>
+                            <Typography.Text
+                              code
+                              title={value}
+                              style={{ maxWidth: 180 }}
+                              ellipsis
+                            >
+                              {value
+                                ? `${value.slice(0, 10)}...${value.slice(-8)}`
+                                : '-'}
+                            </Typography.Text>
+                            {!!value && (
+                              <Button
+                                aria-label="复制签名值"
+                                icon={<CopyOutlined />}
+                                size="small"
+                                type="text"
+                                onClick={() => copyText(value, '签名值')}
+                              />
+                            )}
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                </Card>
+              </>
+            ),
+          },
+          {
             key: 'oidc',
             label: 'SSO / OIDC',
             children: (
@@ -315,6 +554,38 @@ export const IntegrationManagerComponent = () => {
         ]}
       />
 
+      <Modal
+        title="租户签名密钥（仅显示一次）"
+        open={!!tenantSecret}
+        onCancel={() => setTenantSecret(undefined)}
+        footer={
+          <Button type="primary" onClick={() => setTenantSecret(undefined)}>
+            我已保存
+          </Button>
+        }
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="请将该密钥配置到可信数据流通平台，关闭后无法再次查看。"
+        />
+        <Descriptions column={1} size="small" style={{ marginTop: 16 }}>
+          <Descriptions.Item label="Tenant ID">
+            <Typography.Text code>{tenantSecret?.id || ''}</Typography.Text>
+          </Descriptions.Item>
+          <Descriptions.Item label="Signing Secret">
+            <Space.Compact style={{ width: '100%' }}>
+              <Input.Password readOnly value={tenantSecret?.signingSecret || ''} />
+              <Button
+                icon={<CopyOutlined />}
+                onClick={() => copyText(tenantSecret?.signingSecret || '', '签名密钥')}
+              >
+                复制
+              </Button>
+            </Space.Compact>
+          </Descriptions.Item>
+        </Descriptions>
+      </Modal>
       <Modal
         title="创建 API 调用凭证"
         open={clientOpen}
