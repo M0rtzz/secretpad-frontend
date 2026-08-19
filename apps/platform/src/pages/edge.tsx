@@ -2,6 +2,7 @@ import Icon from '@ant-design/icons';
 import {
   ApiOutlined,
   AuditOutlined,
+  CodeOutlined,
   DashboardOutlined,
   DeploymentUnitOutlined,
   ExperimentOutlined,
@@ -67,6 +68,11 @@ const DataGovernanceComponent = lazy(() =>
       default: Component,
     }),
   ),
+);
+const DataDevComponent = lazy(() =>
+  import('@/modules/data-dev').then(({ DataDevComponent: Component }) => ({
+    default: Component,
+  })),
 );
 const UnifiedLogComponent = lazy(() =>
   import('@/modules/unified-log').then(({ UnifiedLogComponent: Component }) => ({
@@ -147,6 +153,12 @@ const menuItems: {
     icon: <DeploymentUnitOutlined />,
     component: <DataGovernanceComponent />,
     key: 'data-governance',
+  },
+  {
+    label: '数据开发',
+    icon: <CodeOutlined />,
+    component: <DataDevComponent />,
+    key: 'data-dev',
   },
   {
     label: '资源管理',

@@ -161,6 +161,104 @@ export const DataGovernanceApi = {
     governanceGet<DataSandboxRecord>('/preview', { nodeId, datatableId, limit }),
 };
 
+// Z-05 数据开发（JAR/SQL/Python 计算任务）：独立前缀 /api/v1alpha1/data-dev
+const devBase = '/api/v1alpha1/data-dev';
+
+const devGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${devBase}${path}`, { method: 'GET', params });
+
+const devPost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${devBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+const devUpload = <T>(
+  path: string,
+  formData: FormData,
+  onUploadProgress?: (percent: number) => void,
+) =>
+  request<DataSandboxResponse<T>>(`${devBase}${path}`, {
+    method: 'POST',
+    data: formData,
+    ...(onUploadProgress ? { onUploadProgress } : {}),
+  });
+
+export const DataDevApi = {
+  // 制品
+  artifacts: (params?: DataSandboxRecord) =>
+    devGet<DataSandboxRecord[]>('/artifacts', params),
+  artifactDetail: (id: string) =>
+    devGet<DataSandboxRecord>('/artifacts/detail', { id }),
+  createArtifact: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/artifacts', data),
+  updateArtifact: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/artifacts/update', data),
+  deleteArtifact: (id: string) => devPost('/artifacts/delete', { id }),
+  // 版本
+  createVersion: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/artifacts/versions', data),
+  uploadJarVersion: (
+    artifactId: string,
+    file: File,
+    meta: DataSandboxRecord,
+    onUploadProgress?: (percent: number) => void,
+  ) => {
+    const formData = new FormData();
+    formData.append('artifactId', artifactId);
+    formData.append('file', file);
+    formData.append('paramsSchema', meta.paramsSchema || '[]');
+    formData.append('defaultParams', meta.defaultParams || '{}');
+    formData.append('description', meta.description || '');
+    return devUpload<DataSandboxRecord>(
+      '/artifacts/versions/upload',
+      formData,
+      onUploadProgress,
+    );
+  },
+  deleteVersion: (id: string) => devPost('/artifacts/versions/delete', { id }),
+  versions: (artifactId: string) =>
+    devGet<DataSandboxRecord[]>('/artifacts/versions', { artifactId }),
+  versionDetail: (versionId: string) =>
+    devGet<DataSandboxRecord>('/artifacts/versions/detail', { versionId }),
+  downloadJar: async (versionId: string) => {
+    const query = new URLSearchParams({ versionId });
+    const response = await fetch(`${devBase}/artifacts/versions/download?${query}`, {
+      credentials: 'include',
+      headers: {
+        'User-Token': localStorage.getItem('User-Token') || '',
+        'Trace-Id': `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      },
+    });
+    if (!response.ok) throw new Error(`JAR 下载失败: HTTP ${response.status}`);
+    return response.blob();
+  },
+  // 依赖白名单
+  dependencies: (params?: DataSandboxRecord) =>
+    devGet<DataSandboxRecord[]>('/dependencies', params),
+  createDependency: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/dependencies', data),
+  updateDependency: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/dependencies/update', data),
+  deleteDependency: (id: string) => devPost('/dependencies/delete', { id }),
+  // 任务
+  tasks: (params?: DataSandboxRecord) => devGet<DataSandboxRecord[]>('/tasks', params),
+  taskDetail: (id: string) => devGet<DataSandboxRecord>('/tasks/detail', { id }),
+  submitTask: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/tasks/submit', data),
+  cancelTask: (id: string) => devPost('/tasks/cancel', { id }),
+  retryTask: (id: string) => devPost<DataSandboxRecord>('/tasks/retry', { id }),
+  previewSource: (nodeId: string, datatableId: string, limit = 20) =>
+    devGet<DataSandboxRecord>('/tasks/preview-source', { nodeId, datatableId, limit }),
+  results: (nodeId = '') => devGet<DataSandboxRecord[]>('/tasks/results', { nodeId }),
+  viewResult: (taskId: string) =>
+    devGet<DataSandboxRecord>('/tasks/results/view', { taskId }),
+  runLog: (taskId: string, attempt?: number) =>
+    devGet<DataSandboxRecord>('/tasks/log', { taskId, attempt }),
+  mountResult: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/tasks/mount', data),
+};
+
 export const responseData = <T>(response: DataSandboxResponse<T>, fallback: T): T => {
   if (response.status?.code !== 0) {
     throw new Error(response.status?.msg || '请求失败');
