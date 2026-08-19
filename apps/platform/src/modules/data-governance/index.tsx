@@ -21,7 +21,7 @@ import {
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
-import { listProject } from '@/services/secretpad/ProjectController';
+import { listP2PProject } from '@/services/secretpad/P2PProjectController';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
 
 const samplingMethods = [
@@ -144,7 +144,7 @@ export const DataGovernanceComponent = () => {
   useEffect(() => {
     if (resultsOpen) {
       DataGovernanceApi.results().then((res) => setResults(responseData(res, [])));
-      listProject().then((res) => setProjects(responseData(res, [])));
+      listP2PProject().then((res) => setProjects(responseData(res, [])));
     }
   }, [resultsOpen]);
 
