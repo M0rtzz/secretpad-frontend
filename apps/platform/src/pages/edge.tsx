@@ -2,9 +2,12 @@ import Icon from '@ant-design/icons';
 import {
   ApiOutlined,
   AuditOutlined,
+  CodeOutlined,
   DashboardOutlined,
+  DeploymentUnitOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
+  FundOutlined,
   SafetyCertificateOutlined,
   ToolOutlined,
   ExperimentOutlined as ModelingOutlined,
@@ -61,6 +64,18 @@ const SandboxApprovalComponent = lazy(() =>
     }),
   ),
 );
+const DataGovernanceComponent = lazy(() =>
+  import('@/modules/data-governance').then(
+    ({ DataGovernanceComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
+const DataDevComponent = lazy(() =>
+  import('@/modules/data-dev').then(({ DataDevComponent: Component }) => ({
+    default: Component,
+  })),
+);
 const UnifiedLogComponent = lazy(() =>
   import('@/modules/unified-log').then(({ UnifiedLogComponent: Component }) => ({
     default: Component,
@@ -79,6 +94,11 @@ const OperationCenterComponent = lazy(() =>
       default: Component,
     }),
   ),
+);
+const ModelCenterComponent = lazy(() =>
+  import('@/modules/model-center').then(({ ModelCenterComponent: Component }) => ({
+    default: Component,
+  })),
 );
 const IntelligentModelingComponent = lazy(() =>
   import('@/modules/intelligent-modeling').then(
@@ -135,16 +155,34 @@ const menuItems: {
     key: 'sandbox-manager',
   },
   {
+    label: '沙箱申请审批',
+    icon: <AuditOutlined />,
+    component: <SandboxApprovalComponent />,
+    key: 'sandbox-approval',
+  },
+  {
     label: '智能建模',
     icon: <ModelingOutlined />,
     component: <IntelligentModelingComponent />,
     key: 'intelligent-modeling',
   },
   {
-    label: '沙箱申请审批',
-    icon: <AuditOutlined />,
-    component: <SandboxApprovalComponent />,
-    key: 'sandbox-approval',
+    label: '数据治理',
+    icon: <DeploymentUnitOutlined />,
+    component: <DataGovernanceComponent />,
+    key: 'data-governance',
+  },
+  {
+    label: '数据开发',
+    icon: <CodeOutlined />,
+    component: <DataDevComponent />,
+    key: 'data-dev',
+  },
+  {
+    label: '模型中心',
+    icon: <FundOutlined />,
+    component: <ModelCenterComponent />,
+    key: 'model-center',
   },
   {
     label: '资源管理',

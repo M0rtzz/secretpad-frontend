@@ -23,6 +23,7 @@ import {
   responseData,
 } from '@/services/data-sandbox';
 import {
+  formatError,
   formatTime,
   MvpNotice,
   MvpPage,
@@ -40,12 +41,14 @@ export const ResourceManagerComponent = () => {
   });
   const [alerts, setAlerts] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [quotaOpen, setQuotaOpen] = useState(false);
   const [alertSource, setAlertSource] = useState('');
   const [form] = Form.useForm();
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const [resourceResponse, alertResponse] = await Promise.all([
         DataSandboxApi.resourceOverview(ownerId),
@@ -53,8 +56,10 @@ export const ResourceManagerComponent = () => {
       ]);
       setOverview(responseData(resourceResponse, {}));
       setAlerts(responseData(alertResponse, []));
-    } catch (error: any) {
-      message.error(error.message || '加载资源数据失败');
+    } catch (requestError: unknown) {
+      const detail = formatError(requestError, '加载资源数据失败');
+      setError(detail);
+      message.error(detail);
     } finally {
       setLoading(false);
     }
@@ -100,6 +105,8 @@ export const ResourceManagerComponent = () => {
     <MvpPage
       title="资源管理"
       description="CPU、GPU、内存和存储资源池，配额分配、回收、使用率与告警"
+      error={error}
+      onRetry={refresh}
       extra={
         <>
           <RefreshButton loading={loading} onClick={refresh} />

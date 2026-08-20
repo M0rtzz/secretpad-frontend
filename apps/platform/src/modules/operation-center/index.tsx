@@ -21,7 +21,12 @@ import {
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
-import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
+import {
+  formatError,
+  formatTime,
+  MvpPage,
+  RefreshButton,
+} from '@/modules/data-sandbox-mvp/common';
 import styles from '@/modules/data-sandbox-mvp/index.less';
 
 export const OperationCenterComponent = () => {
@@ -34,11 +39,13 @@ export const OperationCenterComponent = () => {
   const [diagnostics, setDiagnostics] = useState<DataSandboxRecord>();
   const [securityScan, setSecurityScan] = useState<DataSandboxRecord>();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [ticketOpen, setTicketOpen] = useState(false);
   const [ticketForm] = Form.useForm();
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const [ops, articles] = await Promise.all([
         DataSandboxApi.operations(),
@@ -46,8 +53,10 @@ export const OperationCenterComponent = () => {
       ]);
       setOverview(responseData(ops, {}));
       setHelp(responseData(articles, []));
-    } catch (error: any) {
-      message.error(error.message || '加载运维信息失败');
+    } catch (requestError: unknown) {
+      const detail = formatError(requestError, '加载运维信息失败');
+      setError(detail);
+      message.error(detail);
     } finally {
       setLoading(false);
     }
@@ -62,6 +71,8 @@ export const OperationCenterComponent = () => {
     <MvpPage
       title="运维与配套服务"
       description="备份恢复、监控告警、运维控制台、帮助、诊断与服务支持"
+      error={error}
+      onRetry={refresh}
       extra={
         <>
           <RefreshButton loading={loading} onClick={refresh} />

@@ -43,6 +43,7 @@ export const SandboxManagerComponent = () => {
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
   const [images, setImages] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [allowlistOpen, setAllowlistOpen] = useState(false);
@@ -78,6 +79,7 @@ export const SandboxManagerComponent = () => {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const [sandboxResponse, imageResponse] = await Promise.all([
         DataSandboxApi.sandboxes({ ownerId }),
@@ -85,8 +87,10 @@ export const SandboxManagerComponent = () => {
       ]);
       setItems(responseData(sandboxResponse, []));
       setImages(responseData(imageResponse, []));
-    } catch (error: any) {
-      message.error(error.message || '加载沙箱失败');
+    } catch (requestError: unknown) {
+      const detail = formatError(requestError, '加载沙箱失败');
+      setError(detail);
+      message.error(detail);
     } finally {
       setLoading(false);
     }
@@ -302,6 +306,8 @@ export const SandboxManagerComponent = () => {
     <MvpPage
       title="沙箱管理"
       description="环境镜像、生命周期、期限、网络策略、配额和状态监控"
+      error={error}
+      onRetry={refresh}
       extra={
         <>
           <RefreshButton loading={loading} onClick={refresh} />

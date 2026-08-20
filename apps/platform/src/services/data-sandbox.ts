@@ -1,5 +1,7 @@
 import request from 'umi-request';
 
+const traceId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
 export type DataSandboxResponse<T = unknown> = {
   status?: { code?: number; msg?: string };
   data?: T;
@@ -10,12 +12,25 @@ export type DataSandboxRecord = Record<string, any>;
 const base = '/api/v1alpha1/data-sandbox';
 
 const get = <T>(path: string, params?: Record<string, any>) =>
-  request<DataSandboxResponse<T>>(`${base}${path}`, { method: 'GET', params });
+  request<DataSandboxResponse<T>>(`${base}${path}`, {
+    method: 'GET',
+    params,
+    credentials: 'include',
+    headers: {
+      'User-Token': localStorage.getItem('User-Token') || '',
+      'Trace-Id': traceId(),
+    },
+  });
 
 const post = <T>(path: string, data?: Record<string, any>) =>
   request<DataSandboxResponse<T>>(`${base}${path}`, {
     method: 'POST',
     data: data || {},
+    credentials: 'include',
+    headers: {
+      'User-Token': localStorage.getItem('User-Token') || '',
+      'Trace-Id': traceId(),
+    },
   });
 
 export const DataSandboxApi = {
@@ -154,12 +169,238 @@ export const DataSandboxApi = {
       credentials: 'include',
       headers: {
         'User-Token': localStorage.getItem('User-Token') || '',
-        'Trace-Id': `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        'Trace-Id': traceId(),
       },
     });
     if (!response.ok) throw new Error(`日志导出失败: HTTP ${response.status}`);
     return response.blob();
   },
+};
+
+// Z-04 数据治理（抽样/脱敏）：独立前缀 /api/v1alpha1/data-governance
+const governanceBase = '/api/v1alpha1/data-governance';
+
+const governanceGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${governanceBase}${path}`, {
+    method: 'GET',
+    params,
+  });
+
+const governancePost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${governanceBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+export const DataGovernanceApi = {
+  // 策略
+  policies: (params?: DataSandboxRecord) =>
+    governanceGet<DataSandboxRecord[]>('/policies', params),
+  policyDetail: (id: string) =>
+    governanceGet<DataSandboxRecord>('/policies/detail', { id }),
+  createPolicy: (data: DataSandboxRecord) =>
+    governancePost<DataSandboxRecord>('/policies', data),
+  updatePolicy: (data: DataSandboxRecord) =>
+    governancePost<DataSandboxRecord>('/policies/update', data),
+  deletePolicy: (id: string) => governancePost('/policies/delete', { id }),
+  // 任务
+  tasks: (params?: DataSandboxRecord) =>
+    governanceGet<DataSandboxRecord[]>('/tasks', params),
+  taskDetail: (id: string) => governanceGet<DataSandboxRecord>('/tasks/detail', { id }),
+  submitTask: (data: DataSandboxRecord) =>
+    governancePost<DataSandboxRecord>('/tasks/submit', data),
+  cancelTask: (id: string) => governancePost('/tasks/cancel', { id }),
+  retryTask: (id: string) => governancePost<DataSandboxRecord>('/tasks/retry', { id }),
+  // 结果数据集
+  results: (nodeId = '') =>
+    governanceGet<DataSandboxRecord[]>('/tasks/results', { nodeId }),
+  mountResult: (data: DataSandboxRecord) =>
+    governancePost<DataSandboxRecord>('/tasks/mount', data),
+  // 结果数据展示（仅脱敏后结果可返回行数据；表头携带数据源）
+  viewResult: (taskId: string) =>
+    governanceGet<DataSandboxRecord>('/tasks/results/view', { taskId }),
+  // 血缘 / 预览
+  lineage: (nodeId = '', datatableId = '') =>
+    governanceGet<DataSandboxRecord[]>('/lineage', { nodeId, datatableId }),
+  preview: (nodeId: string, datatableId: string, limit = 20) =>
+    governanceGet<DataSandboxRecord>('/preview', { nodeId, datatableId, limit }),
+};
+
+// Z-05 数据开发（JAR/SQL/Python 计算任务）：独立前缀 /api/v1alpha1/data-dev
+const devBase = '/api/v1alpha1/data-dev';
+
+const devGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${devBase}${path}`, { method: 'GET', params });
+
+const devPost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${devBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+const devUpload = <T>(
+  path: string,
+  formData: FormData,
+  onUploadProgress?: (percent: number) => void,
+) =>
+  request<DataSandboxResponse<T>>(`${devBase}${path}`, {
+    method: 'POST',
+    data: formData,
+    ...(onUploadProgress ? { onUploadProgress } : {}),
+  });
+
+export const DataDevApi = {
+  // 制品
+  artifacts: (params?: DataSandboxRecord) =>
+    devGet<DataSandboxRecord[]>('/artifacts', params),
+  artifactDetail: (id: string) =>
+    devGet<DataSandboxRecord>('/artifacts/detail', { id }),
+  createArtifact: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/artifacts', data),
+  updateArtifact: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/artifacts/update', data),
+  deleteArtifact: (id: string) => devPost('/artifacts/delete', { id }),
+  // 版本
+  createVersion: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/artifacts/versions', data),
+  uploadJarVersion: (
+    artifactId: string,
+    file: File,
+    meta: DataSandboxRecord,
+    onUploadProgress?: (percent: number) => void,
+  ) => {
+    const formData = new FormData();
+    formData.append('artifactId', artifactId);
+    formData.append('file', file);
+    formData.append('paramsSchema', meta.paramsSchema || '[]');
+    formData.append('defaultParams', meta.defaultParams || '{}');
+    formData.append('description', meta.description || '');
+    return devUpload<DataSandboxRecord>(
+      '/artifacts/versions/upload',
+      formData,
+      onUploadProgress,
+    );
+  },
+  deleteVersion: (id: string) => devPost('/artifacts/versions/delete', { id }),
+  versions: (artifactId: string) =>
+    devGet<DataSandboxRecord[]>('/artifacts/versions', { artifactId }),
+  versionDetail: (versionId: string) =>
+    devGet<DataSandboxRecord>('/artifacts/versions/detail', { versionId }),
+  downloadJar: async (versionId: string) => {
+    const query = new URLSearchParams({ versionId });
+    const response = await fetch(`${devBase}/artifacts/versions/download?${query}`, {
+      credentials: 'include',
+      headers: {
+        'User-Token': localStorage.getItem('User-Token') || '',
+        'Trace-Id': `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      },
+    });
+    if (!response.ok) throw new Error(`JAR 下载失败: HTTP ${response.status}`);
+    return response.blob();
+  },
+  // 依赖白名单
+  dependencies: (params?: DataSandboxRecord) =>
+    devGet<DataSandboxRecord[]>('/dependencies', params),
+  createDependency: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/dependencies', data),
+  updateDependency: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/dependencies/update', data),
+  deleteDependency: (id: string) => devPost('/dependencies/delete', { id }),
+  // 任务
+  tasks: (params?: DataSandboxRecord) => devGet<DataSandboxRecord[]>('/tasks', params),
+  taskDetail: (id: string) => devGet<DataSandboxRecord>('/tasks/detail', { id }),
+  submitTask: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/tasks/submit', data),
+  cancelTask: (id: string) => devPost('/tasks/cancel', { id }),
+  retryTask: (id: string) => devPost<DataSandboxRecord>('/tasks/retry', { id }),
+  previewSource: (nodeId: string, datatableId: string, limit = 20) =>
+    devGet<DataSandboxRecord>('/tasks/preview-source', { nodeId, datatableId, limit }),
+  results: (nodeId = '') => devGet<DataSandboxRecord[]>('/tasks/results', { nodeId }),
+  viewResult: (taskId: string) =>
+    devGet<DataSandboxRecord>('/tasks/results/view', { taskId }),
+  runLog: (taskId: string, attempt?: number) =>
+    devGet<DataSandboxRecord>('/tasks/log', { taskId, attempt }),
+  mountResult: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/tasks/mount', data),
+};
+
+// Z-06 模型中心：/api/v1alpha1/models（模型注册/审批/测试）+ /api/v1alpha1/model-api（发布/凭证/调用）
+const modelBase = '/api/v1alpha1/models';
+const modelApiBase = '/api/v1alpha1/model-api';
+
+const modelGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${modelBase}${path}`, { method: 'GET', params });
+
+const modelPost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${modelBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+const modelApiGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${modelApiBase}${path}`, { method: 'GET', params });
+
+const modelApiPost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${modelApiBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+export const DataModelApi = {
+  /* 模型注册 */
+  models: (params?: DataSandboxRecord) => modelGet<DataSandboxRecord[]>('', params),
+  modelDetail: (id: string) => modelGet<DataSandboxRecord>('/detail', { id }),
+  register: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/register', data),
+  updateModel: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/update', data),
+  deleteModel: (id: string) => modelPost('/delete', { id }),
+  /* 审批 */
+  submitApproval: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/approvals/submit', data),
+  approvals: (params?: DataSandboxRecord) =>
+    modelGet<DataSandboxRecord[]>('/approvals', params),
+  approvalDetail: (id: string) =>
+    modelGet<DataSandboxRecord>('/approvals/detail', { id }),
+  approvalHistory: (id: string) =>
+    modelGet<DataSandboxRecord[]>('/approvals/history', { id }),
+  approvalAction: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/approvals/action', data),
+  /* 测试 */
+  executeTest: (data: DataSandboxRecord) =>
+    modelPost<DataSandboxRecord>('/tests/execute', data),
+  tests: (params?: DataSandboxRecord) =>
+    modelGet<DataSandboxRecord[]>('/tests', params),
+  testDetail: (id: string) => modelGet<DataSandboxRecord>('/tests/detail', { id }),
+  testLog: (id: string, attempt?: number) =>
+    modelGet<DataSandboxRecord>('/tests/log', { id, attempt }),
+  cancelTest: (id: string) => modelPost<DataSandboxRecord>('/tests/cancel', { id }),
+  retryTest: (id: string) => modelPost<DataSandboxRecord>('/tests/retry', { id }),
+  /* API 发布 */
+  createApi: (data: DataSandboxRecord) =>
+    modelApiPost<DataSandboxRecord>('/create', data),
+  apis: (params?: DataSandboxRecord) =>
+    modelApiGet<DataSandboxRecord[]>('/list', params),
+  apiDetail: (id: string) => modelApiGet<DataSandboxRecord>('/detail', { id }),
+  updateApi: (data: DataSandboxRecord) =>
+    modelApiPost<DataSandboxRecord>('/update', data),
+  regenerateSecret: (id: string) =>
+    modelApiPost<DataSandboxRecord>('/regenerate-secret', { id }),
+  enableApi: (id: string) => modelApiPost<DataSandboxRecord>('/enable', { id }),
+  disableApi: (id: string) => modelApiPost<DataSandboxRecord>('/disable', { id }),
+  deleteApi: (id: string) => modelApiPost('/delete', { id }),
+  /* 调用（两路鉴权） */
+  invokeWithCredential: (appId: string, secret: string, data: DataSandboxRecord) =>
+    request<DataSandboxResponse<DataSandboxRecord>>(`${modelApiBase}/invoke`, {
+      method: 'POST',
+      data,
+      headers: { 'X-APP-ID': appId, 'X-APP-SECRET': secret },
+    }),
+  invokeWithToken: (data: DataSandboxRecord) =>
+    request<DataSandboxResponse<DataSandboxRecord>>(`${modelApiBase}/invoke`, {
+      method: 'POST',
+      data,
+    }),
 };
 
 export const responseData = <T>(response: DataSandboxResponse<T>, fallback: T): T => {
