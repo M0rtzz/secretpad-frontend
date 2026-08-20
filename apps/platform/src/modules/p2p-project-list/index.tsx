@@ -17,7 +17,7 @@ import { history, useLocation } from 'umi';
 import { EdgeRouteWrapper, isP2PWorkbench } from '@/components/platform-wrapper';
 import { P2PCreateProjectModal } from '@/modules/create-project/p2p-create-project/p2p-create-project.view';
 import { ProjectType } from '@/modules/create-project/p2p-create-project/compute-func-data';
-import { formatTimestamp } from '@/modules/dag-result/utils';
+import { formatBeijingTimestamp, formatTimestamp } from '@/modules/dag-result/utils';
 import { DataAssetPreviewTable } from '@/modules/data-catalog/preview-table';
 import { EditProjectModal } from '@/modules/project-list/components/edit-project';
 import { getModel, Model, useModel } from '@/util/valtio-helper';
@@ -465,7 +465,7 @@ export const P2pProjectListComponent: React.FC = () => {
             {
               title: '挂载时间',
               dataIndex: 'attached_at',
-              render: (v: string) => formatTimestamp(v),
+              render: (v: string) => formatBeijingTimestamp(v),
             },
             {
               title: '有效期',
