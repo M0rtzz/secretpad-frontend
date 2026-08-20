@@ -1,5 +1,7 @@
 import request from 'umi-request';
 
+const traceId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
 export type DataSandboxResponse<T = unknown> = {
   status?: { code?: number; msg?: string };
   data?: T;
@@ -10,12 +12,25 @@ export type DataSandboxRecord = Record<string, any>;
 const base = '/api/v1alpha1/data-sandbox';
 
 const get = <T>(path: string, params?: Record<string, any>) =>
-  request<DataSandboxResponse<T>>(`${base}${path}`, { method: 'GET', params });
+  request<DataSandboxResponse<T>>(`${base}${path}`, {
+    method: 'GET',
+    params,
+    credentials: 'include',
+    headers: {
+      'User-Token': localStorage.getItem('User-Token') || '',
+      'Trace-Id': traceId(),
+    },
+  });
 
 const post = <T>(path: string, data?: Record<string, any>) =>
   request<DataSandboxResponse<T>>(`${base}${path}`, {
     method: 'POST',
     data: data || {},
+    credentials: 'include',
+    headers: {
+      'User-Token': localStorage.getItem('User-Token') || '',
+      'Trace-Id': traceId(),
+    },
   });
 
 export const DataSandboxApi = {
@@ -104,7 +119,7 @@ export const DataSandboxApi = {
       credentials: 'include',
       headers: {
         'User-Token': localStorage.getItem('User-Token') || '',
-        'Trace-Id': `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        'Trace-Id': traceId(),
       },
     });
     if (!response.ok) throw new Error(`日志导出失败: HTTP ${response.status}`);

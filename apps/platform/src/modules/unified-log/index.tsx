@@ -1,5 +1,6 @@
 import {
   Button,
+  DatePicker,
   Form,
   Input,
   InputNumber,
@@ -10,6 +11,8 @@ import {
   Table,
   Tag,
 } from 'antd';
+import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
@@ -18,6 +21,7 @@ import {
   responseData,
 } from '@/services/data-sandbox';
 import {
+  formatError,
   formatTime,
   MvpPage,
   RefreshButton,
@@ -29,28 +33,46 @@ const logTypes = ['OPERATION', 'AUDIT', 'LOGIN', 'SYSTEM'];
 export const UnifiedLogComponent = () => {
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [type, setType] = useState('');
   const [level, setLevel] = useState('');
   const [keyword, setKeyword] = useState('');
+  const [actorInput, setActorInput] = useState('');
+  const [actor, setActor] = useState('');
+  const [timeRange, setTimeRange] = useState<[Dayjs | null, Dayjs | null]>([
+    null,
+    null,
+  ]);
   const [retention, setRetention] = useState<DataSandboxRecord[]>([]);
   const [retentionOpen, setRetentionOpen] = useState(false);
   const [form] = Form.useForm();
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const [logs, policies] = await Promise.all([
-        DataSandboxApi.logs({ type, level, keyword, limit: 1000 }),
+        DataSandboxApi.logs({
+          type,
+          level,
+          actor,
+          keyword,
+          start: timeRange[0]?.toISOString(),
+          end: timeRange[1]?.endOf('day').toISOString(),
+          limit: 1000,
+        }),
         DataSandboxApi.retention(),
       ]);
       setItems(responseData(logs, []));
       setRetention(responseData(policies, []));
-    } catch (error: any) {
-      message.error(error.message || '日志加载失败');
+    } catch (requestError: unknown) {
+      const detail = formatError(requestError, '日志加载失败');
+      setError(detail);
+      message.error(detail);
     } finally {
       setLoading(false);
     }
-  }, [type, level, keyword]);
+  }, [type, level, actor, keyword, timeRange]);
 
   useEffect(() => {
     refresh();
@@ -60,6 +82,8 @@ export const UnifiedLogComponent = () => {
     <MvpPage
       title="统一日志"
       description="操作、审计、登录和系统日志的检索、导出与留存策略"
+      error={error}
+      onRetry={refresh}
       extra={
         <>
           <RefreshButton loading={loading} onClick={refresh} />
@@ -69,7 +93,14 @@ export const UnifiedLogComponent = () => {
             onClick={async () => {
               try {
                 saveBlob(
-                  await DataSandboxApi.exportLogs({ type, keyword }),
+                  await DataSandboxApi.exportLogs({
+                    type,
+                    level,
+                    actor,
+                    keyword,
+                    start: timeRange[0]?.toISOString(),
+                    end: timeRange[1]?.endOf('day').toISOString(),
+                  }),
                   `data-sandbox-logs-${Date.now()}.csv`,
                 );
               } catch (error: any) {
@@ -106,6 +137,23 @@ export const UnifiedLogComponent = () => {
           placeholder="动作、资源 ID 或详情"
           onSearch={setKeyword}
           style={{ width: 320 }}
+        />
+        <Input
+          allowClear
+          placeholder="操作人"
+          value={actorInput}
+          onChange={(event) => setActorInput(event.target.value)}
+          onPressEnter={(event) => setActor(event.currentTarget.value)}
+          onClear={() => setActor('')}
+          style={{ width: 150 }}
+        />
+        <DatePicker.RangePicker
+          value={timeRange}
+          onChange={(value) => setTimeRange(value || [null, null])}
+          presets={[
+            { label: '最近 7 天', value: [dayjs().subtract(7, 'day'), dayjs()] },
+            { label: '最近 30 天', value: [dayjs().subtract(30, 'day'), dayjs()] },
+          ]}
         />
       </Space>
       <Table
