@@ -11,6 +11,7 @@ import {
   Table,
   Tag,
   Tooltip,
+  Typography,
 } from 'antd';
 import { parse } from 'query-string';
 import { useCallback, useEffect, useState } from 'react';
@@ -21,32 +22,60 @@ import {
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
-import {
-  formatError,
-  formatTime,
-  MvpPage,
-  RefreshButton,
-} from '@/modules/data-sandbox-mvp/common';
+import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
+import { LoginService } from '@/modules/login/login.service';
+import { useModel } from '@/util/valtio-helper';
 
 const statusColors: Record<string, string> = {
   RUNNING: 'success',
   STARTING: 'processing',
+  STOPPING: 'processing',
   STOPPED: 'default',
   ERROR: 'error',
   EXPIRED: 'warning',
+  DESTROYED: 'default',
 };
 
 export const SandboxManagerComponent = () => {
   const { search } = useLocation();
   const ownerId = String(parse(search).ownerId || '');
+  const loginService = useModel(LoginService);
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
   const [images, setImages] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
+  const [allowlistOpen, setAllowlistOpen] = useState(false);
+  const [allowlistSandboxId, setAllowlistSandboxId] = useState('');
+  const [allowlistItems, setAllowlistItems] = useState<DataSandboxRecord[]>([]);
+  const [allowlistLoading, setAllowlistLoading] = useState(false);
+  const [approvalRequired, setApprovalRequired] = useState(false);
   const [form] = Form.useForm();
   const [imageForm] = Form.useForm();
+  const [allowlistForm] = Form.useForm();
+  // 门禁直通角色：平台管理员（与后端 SandboxApprovalGate.isAdmin 一致）
+  const isAdmin =
+    loginService?.userInfo?.ownerId === 'kuscia-system' &&
+    loginService?.userInfo?.name === 'admin';
+
+  // Z-03 门禁：approval.required 开启且非 admin 时，创建/续期/回收须走申请单审批
+  useEffect(() => {
+    DataSandboxApi.approvalConfig()
+      .then((res) => setApprovalRequired(Boolean(responseData(res, {})?.required)))
+      .catch(() => setApprovalRequired(false));
+  }, []);
+
+  const gated = () => approvalRequired && !isAdmin;
+
+  const guideToApproval = (text: string) => {
+    Modal.confirm({
+      title: '需走审批流程',
+      content: `${text}需提交申请单审批，请在左侧「沙箱申请审批」菜单提交，审批通过后自动执行。`,
+      okText: '知道了',
+      cancelButtonProps: { style: { display: 'none' } },
+    });
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -77,10 +106,73 @@ export const SandboxManagerComponent = () => {
         await DataSandboxApi.sandboxAction({ id, action: name, ...extra }),
         {},
       );
-      message.success('操作已提交');
+      if (name === 'START') {
+        message.info('启动中，约 30 秒内完成（后台同步），可稍后刷新查看状态');
+      } else {
+        message.success('操作已提交');
+      }
       refresh();
     } catch (error: any) {
       message.error(error.message || '操作失败');
+    }
+  };
+
+  // 打开开发环境：签发一次性 token 后新标签页跳转跳板地址
+  const openDevEndpoint = async (record: DataSandboxRecord) => {
+    try {
+      const result = responseData(
+        await DataSandboxApi.devToken(record.id),
+        null as any,
+      );
+      if (!result || !result.url) throw new Error('签发访问地址失败');
+      window.open(result.url, '_blank');
+    } catch (error: any) {
+      message.error(error.message || '打开开发环境失败');
+    }
+  };
+
+  // Z-02 网络白名单：仅 ALLOW_LIST 策略沙箱提供管理入口
+  const loadAllowlist = async (sandboxId: string) => {
+    setAllowlistLoading(true);
+    try {
+      setAllowlistItems(
+        responseData(await DataSandboxApi.networkAllowlist(sandboxId), []),
+      );
+    } catch (error: any) {
+      message.error(error.message || '加载白名单失败');
+    } finally {
+      setAllowlistLoading(false);
+    }
+  };
+  const openAllowlist = async (sandboxId: string) => {
+    setAllowlistSandboxId(sandboxId);
+    setAllowlistOpen(true);
+    allowlistForm.resetFields();
+    loadAllowlist(sandboxId);
+  };
+  const addAllowlist = async (values: DataSandboxRecord) => {
+    try {
+      responseData(
+        await DataSandboxApi.addNetworkAllowlist({
+          sandboxId: allowlistSandboxId,
+          ...values,
+        }),
+        {},
+      );
+      message.success('白名单已添加');
+      allowlistForm.resetFields();
+      loadAllowlist(allowlistSandboxId);
+    } catch (error: any) {
+      message.error(error.message || '添加白名单失败');
+    }
+  };
+  const deleteAllowlist = async (id: string) => {
+    try {
+      responseData(await DataSandboxApi.deleteNetworkAllowlist(id), {});
+      message.success('白名单已删除');
+      loadAllowlist(allowlistSandboxId);
+    } catch (error: any) {
+      message.error(error.message || '删除白名单失败');
     }
   };
 
@@ -110,6 +202,19 @@ export const SandboxManagerComponent = () => {
       ),
     },
     {
+      title: '分配状态',
+      dataIndex: 'alloc_state',
+      render: (value: string) => {
+        if (!value) return '-';
+        const allocColors: Record<string, string> = {
+          RESERVED: 'blue',
+          BOUND: 'green',
+          RELEASED: 'default',
+        };
+        return <Tag color={allocColors[value] || 'default'}>{value}</Tag>;
+      },
+    },
+    {
       title: '资源配额',
       render: (_: unknown, record: DataSandboxRecord) =>
         `${record.cpu_cores}C / ${record.memory_gb}GB / GPU ${record.gpu_count} / ${record.storage_gb}GB`,
@@ -121,8 +226,21 @@ export const SandboxManagerComponent = () => {
     },
     { title: '到期时间', dataIndex: 'expires_at', render: formatTime },
     {
+      title: '端点',
+      dataIndex: 'endpoint',
+      width: 180,
+      render: (value: string) =>
+        value ? (
+          <Typography.Text copyable={{ text: value }} style={{ fontSize: 12 }}>
+            {value}
+          </Typography.Text>
+        ) : (
+          '-'
+        ),
+    },
+    {
       title: '操作',
-      width: 250,
+      width: 300,
       render: (_: unknown, record: DataSandboxRecord) => (
         <Space wrap>
           {record.status !== 'RUNNING' ? (
@@ -134,10 +252,31 @@ export const SandboxManagerComponent = () => {
               停止
             </Button>
           )}
+          {record.status === 'RUNNING' &&
+          record.endpoint &&
+          record.network_policy !== 'NO_NETWORK' ? (
+            <Button
+              size="small"
+              type="link"
+              onClick={() => openDevEndpoint(record)}
+              style={{ color: '#1890ff' }}
+            >
+              打开开发环境
+            </Button>
+          ) : null}
+          {record.network_policy === 'ALLOW_LIST' ? (
+            <Button size="small" type="link" onClick={() => openAllowlist(record.id)}>
+              白名单
+            </Button>
+          ) : null}
           <Button
             size="small"
             type="link"
-            onClick={() => action(record.id, 'RENEW', { days: 7 })}
+            onClick={() =>
+              gated()
+                ? guideToApproval('续期沙箱')
+                : action(record.id, 'RENEW', { days: 7 })
+            }
           >
             续期7天
           </Button>
@@ -150,7 +289,9 @@ export const SandboxManagerComponent = () => {
           </Button>
           <Popconfirm
             title="销毁后将回收全部配额，确定继续？"
-            onConfirm={() => action(record.id, 'DESTROY')}
+            onConfirm={() =>
+              gated() ? guideToApproval('回收沙箱') : action(record.id, 'DESTROY')
+            }
           >
             <Button danger size="small" type="link">
               销毁
@@ -171,8 +312,13 @@ export const SandboxManagerComponent = () => {
         <>
           <RefreshButton loading={loading} onClick={refresh} />
           <Button onClick={() => setImageOpen(true)}>环境镜像</Button>
-          <Button type="primary" onClick={() => setCreateOpen(true)}>
-            创建沙箱
+          <Button
+            type="primary"
+            onClick={() =>
+              gated() ? guideToApproval('创建沙箱') : setCreateOpen(true)
+            }
+          >
+            {gated() ? '申请沙箱' : '创建沙箱'}
           </Button>
         </>
       }
@@ -317,6 +463,78 @@ export const SandboxManagerComponent = () => {
           </Form.Item>
           <Button type="primary" htmlType="submit">
             新增镜像
+          </Button>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`出口白名单（${allowlistSandboxId}）`}
+        open={allowlistOpen}
+        width={760}
+        onCancel={() => setAllowlistOpen(false)}
+        footer={null}
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          loading={allowlistLoading}
+          pagination={false}
+          dataSource={allowlistItems}
+          columns={[
+            { title: '目标地址', dataIndex: 'host' },
+            { title: '端口', dataIndex: 'port' },
+            {
+              title: '协议',
+              dataIndex: 'proto',
+              render: (v: string) => <Tag>{v || 'tcp'}</Tag>,
+            },
+            { title: '备注', dataIndex: 'remark', render: (v: string) => v || '-' },
+            { title: '创建时间', dataIndex: 'created_at', render: formatTime },
+            {
+              title: '操作',
+              render: (_: unknown, row: DataSandboxRecord) => (
+                <Button
+                  danger
+                  size="small"
+                  type="link"
+                  onClick={() => deleteAllowlist(row.id)}
+                >
+                  删除
+                </Button>
+              ),
+            },
+          ]}
+        />
+        <Form
+          form={allowlistForm}
+          layout="inline"
+          style={{ marginTop: 20 }}
+          initialValues={{ proto: 'tcp' }}
+          onFinish={addAllowlist}
+        >
+          <Form.Item
+            name="host"
+            rules={[{ required: true, message: '请输入目标地址' }]}
+          >
+            <Input placeholder="目标地址，如 api.example.com" style={{ width: 220 }} />
+          </Form.Item>
+          <Form.Item name="port" rules={[{ required: true, message: '端口 1-65535' }]}>
+            <InputNumber min={1} max={65535} placeholder="端口" />
+          </Form.Item>
+          <Form.Item name="proto">
+            <Select
+              style={{ width: 90 }}
+              options={[
+                { value: 'tcp', label: 'tcp' },
+                { value: 'udp', label: 'udp' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="remark">
+            <Input placeholder="备注（可选）" style={{ width: 180 }} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit">
+            添加
           </Button>
         </Form>
       </Modal>

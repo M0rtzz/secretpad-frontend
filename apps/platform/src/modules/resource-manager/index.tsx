@@ -7,6 +7,7 @@ import {
   message,
   Modal,
   Progress,
+  Select,
   Space,
   Statistic,
   Table,
@@ -42,6 +43,7 @@ export const ResourceManagerComponent = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [quotaOpen, setQuotaOpen] = useState(false);
+  const [alertSource, setAlertSource] = useState('');
   const [form] = Form.useForm();
 
   const refresh = useCallback(async () => {
@@ -68,6 +70,37 @@ export const ResourceManagerComponent = () => {
   }, [refresh]);
 
   const pools = overview.pools || [];
+  // Z-02：节点真实使用率（ResourceCollector 写入 ds_node_metric）与采集状态
+  const nodeMetrics = overview.nodeMetrics || {};
+  const metrics = overview.metrics || {};
+  const nodeUsage = (type: string): number | null => {
+    const v =
+      type === 'GPU'
+        ? nodeMetrics.gpu_utilization_percent
+        : nodeMetrics[`${type.toLowerCase()}_usage_percent`];
+    if (type === 'GPU' && !(Number.isFinite(Number(v)) && Number(v) >= 0)) return null;
+    return Number.isFinite(Number(v)) ? Number(v) : null;
+  };
+  const metricsStatusText =
+    metrics.status === 'FRESH'
+      ? '正常'
+      : metrics.status === 'STALE'
+      ? '数据过期'
+      : 'N/A';
+  const metricsStatusColor =
+    metrics.status === 'FRESH'
+      ? 'success'
+      : metrics.status === 'STALE'
+      ? 'warning'
+      : 'default';
+  // 告警来源过滤 + OPEN 计数
+  const alertSources = Array.from(
+    new Set(alerts.map((a) => String(a.source || '')).filter(Boolean)),
+  );
+  const filteredAlerts = alertSource
+    ? alerts.filter((a) => String(a.source || '') === alertSource)
+    : alerts;
+  const openAlertCount = alerts.filter((a) => a.status === 'OPEN').length;
   return (
     <MvpPage
       title="资源管理"
@@ -97,24 +130,54 @@ export const ResourceManagerComponent = () => {
     >
       <MvpNotice />
       <div className={styles.cards}>
-        {pools.map((pool: DataSandboxRecord) => (
-          <Card key={pool.resource_type}>
-            <Statistic
-              title={`${pool.resource_type} 资源池`}
-              value={pool.used_amount || 0}
-              suffix={`/ ${pool.total_amount} ${pool.unit}`}
-            />
-            <Progress
-              percent={pool.usage_percent || 0}
-              status={
-                (pool.usage_percent || 0) >= pool.warning_threshold
-                  ? 'exception'
-                  : 'active'
-              }
-            />
-          </Card>
-        ))}
+        {pools.map((pool: DataSandboxRecord) => {
+          const realUsage = nodeUsage(pool.resource_type);
+          return (
+            <Card key={pool.resource_type}>
+              <Statistic
+                title={`${pool.resource_type} 资源池`}
+                value={pool.used_amount || 0}
+                suffix={`/ ${pool.total_amount} ${pool.unit}`}
+              />
+              <Progress
+                percent={pool.usage_percent || 0}
+                status={
+                  (pool.usage_percent || 0) >= pool.warning_threshold
+                    ? 'exception'
+                    : 'active'
+                }
+              />
+              {realUsage !== null && (
+                <div style={{ marginTop: 8, color: '#8c8c8c', fontSize: 12 }}>
+                  节点真实使用率：{realUsage}%
+                </div>
+              )}
+            </Card>
+          );
+        })}
       </div>
+      <Card
+        title={
+          <Space>
+            节点真实使用率
+            <Tag color={metricsStatusColor}>{metricsStatusText}</Tag>
+          </Space>
+        }
+        style={{ marginTop: 16 }}
+      >
+        <Space size="large" wrap>
+          <Statistic title="CPU" value={nodeUsage('CPU') ?? 0} suffix="%" />
+          <Statistic title="内存" value={nodeUsage('MEMORY') ?? 0} suffix="%" />
+          <Statistic title="存储" value={nodeUsage('STORAGE') ?? 0} suffix="%" />
+          <Statistic
+            title="GPU 利用率"
+            value={nodeUsage('GPU') ?? 0}
+            formatter={() =>
+              nodeUsage('GPU') !== null ? `${nodeUsage('GPU')}%` : 'N/A'
+            }
+          />
+        </Space>
+      </Card>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Card title={`节点配额：${overview.quota?.owner_id || ownerId || '-'}`}>
           <Space size="large" wrap>
@@ -140,7 +203,7 @@ export const ResourceManagerComponent = () => {
             />
           </Space>
         </Card>
-        <Card title="GPU 库存（MVP 元数据）">
+        <Card title="GPU 台账">
           <Table
             rowKey="id"
             size="small"
@@ -152,16 +215,56 @@ export const ResourceManagerComponent = () => {
               {
                 title: '状态',
                 dataIndex: 'status',
-                render: (v: string) => <Tag color="success">{v}</Tag>,
+                render: (v: string) => (
+                  <Tag
+                    color={
+                      v === 'AVAILABLE'
+                        ? 'success'
+                        : v === 'ALLOCATED'
+                        ? 'processing'
+                        : 'default'
+                    }
+                  >
+                    {v}
+                  </Tag>
+                ),
+              },
+              {
+                title: '占用者',
+                dataIndex: 'owner_id',
+                render: (v: string) => v || '-',
+              },
+              {
+                title: '利用率',
+                dataIndex: 'utilization',
+                render: (v: number) =>
+                  Number.isFinite(Number(v)) && Number(v) >= 0 ? `${v}%` : 'N/A',
               },
             ]}
           />
         </Card>
-        <Card title="资源告警">
+        <Card
+          title={
+            <Space>
+              资源告警
+              {openAlertCount > 0 && <Tag color="error">OPEN {openAlertCount}</Tag>}
+            </Space>
+          }
+          extra={
+            <Select
+              style={{ width: 160 }}
+              placeholder="来源筛选"
+              allowClear
+              value={alertSource || undefined}
+              onChange={(v) => setAlertSource(v || '')}
+              options={alertSources.map((s) => ({ value: s, label: s }))}
+            />
+          }
+        >
           <Table
             rowKey="id"
             size="small"
-            dataSource={alerts}
+            dataSource={filteredAlerts}
             columns={[
               {
                 title: '级别',
