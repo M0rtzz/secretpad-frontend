@@ -534,6 +534,18 @@ export const SandboxManagerComponent = () => {
           <Form.Item name="name" label="沙箱名称" rules={[{ required: true }]}>
             <Input placeholder="例如：客户流失分析环境" />
           </Form.Item>
+          <Form.Item
+            name="description"
+            label="沙箱描述"
+            rules={[{ max: 500, message: '描述不能超过500个字符' }]}
+          >
+            <Input.TextArea
+              rows={3}
+              showCount
+              maxLength={500}
+              placeholder="说明沙箱用途、开发任务或使用范围"
+            />
+          </Form.Item>
           <Form.Item name="projectId" label="所属项目" rules={[{ required: true }]}>
             <Select
               showSearch

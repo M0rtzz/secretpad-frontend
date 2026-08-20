@@ -69,6 +69,7 @@ export class P2pProjectListService extends Model {
     });
     if (status && status.code !== 0) {
       message.error(status.msg);
+      return false;
     } else {
       message.success('处理成功');
       this.getListProject();
@@ -77,6 +78,7 @@ export class P2pProjectListService extends Model {
           await this.messageGetList();
         }
       }
+      return true;
     }
   };
 

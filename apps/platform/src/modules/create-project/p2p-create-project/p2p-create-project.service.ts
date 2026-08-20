@@ -53,7 +53,7 @@ export class P2PCreateProjectService extends Model {
   getAssetList = async () => {
     const assets = responseData(await DataAssetApi.catalog({}), []);
     this.assetListOptions = assets
-      .filter((asset) => asset.provider_node_id)
+      .filter((asset) => asset.provider_node_id && asset.owned !== false)
       .map((asset) => ({
         value: asset.id,
         label: `${asset.name}（${

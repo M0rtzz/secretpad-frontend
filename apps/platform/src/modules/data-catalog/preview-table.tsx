@@ -20,6 +20,14 @@ export const DataAssetPreviewTable = ({ preview }: { preview?: DataSandboxRecord
           message="源数据已自动脱敏，预览不会展示完整字段值"
         />
       )}
+      {preview?.sharedMetadataOnly && (
+        <Alert
+          showIcon
+          type="info"
+          style={{ marginBottom: 12 }}
+          message="该数据由项目合作节点提供，当前展示已同步的字段格式；样例数据仍由提供方保管"
+        />
+      )}
       {preview?.asset?.name && (
         <Typography.Text type="secondary">
           数据集：{preview.asset.name} 预览行数：{rows.length}

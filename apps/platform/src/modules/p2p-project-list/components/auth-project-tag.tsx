@@ -1,4 +1,15 @@
-import { Divider, Input, Popconfirm, Space, Tag, Tooltip } from 'antd';
+import {
+  Divider,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  message,
+} from 'antd';
 import Link from 'antd/es/typography/Link';
 import React from 'react';
 import { useLocation } from 'umi';
@@ -6,6 +17,7 @@ import { useLocation } from 'umi';
 import { DefaultModalManager } from '@/modules/dag-modal-manager';
 import { p2pProjectDetailDrawer } from '@/modules/p2p-project-detail/project-detail-drawer';
 import { useModel } from '@/util/valtio-helper';
+import { DataAssetApi, DataSandboxRecord, responseData } from '@/services/data-sandbox';
 
 import { P2pProjectListService } from '../p2p-project-list.service';
 
@@ -71,6 +83,48 @@ export const AuthProjectTag = (props: IProps) => {
 
   const viewInstance = useModel(P2pProjectListService);
   const modalManager = useModel(DefaultModalManager);
+  const [approveOpen, setApproveOpen] = React.useState(false);
+  const [approveLoading, setApproveLoading] = React.useState(false);
+  const [localAssets, setLocalAssets] = React.useState<DataSandboxRecord[]>([]);
+  const [approveForm] = Form.useForm();
+
+  const openApprove = async () => {
+    try {
+      setLocalAssets(
+        responseData(await DataAssetApi.catalog({}), []).filter(
+          (asset: DataSandboxRecord) => asset.owned !== false,
+        ),
+      );
+      setApproveOpen(true);
+    } catch (error: any) {
+      message.error(error.message || '加载本节点数据失败');
+    }
+  };
+
+  const approveWithAssets = async ({ assetIds = [] }: { assetIds?: string[] }) => {
+    if (!voteId || !project.projectId) return;
+    setApproveLoading(true);
+    try {
+      if (assetIds.length) {
+        responseData(
+          await DataAssetApi.attachProjectAssets({
+            projectId: project.projectId,
+            assetIds,
+          }),
+          [],
+        );
+      }
+      const success = await viewInstance.process(StatusEnum.AGREE, voteId, pathname);
+      if (success) {
+        setApproveOpen(false);
+        approveForm.resetFields();
+      }
+    } catch (error: any) {
+      message.error(error.message || '同意项目并挂载数据失败');
+    } finally {
+      setApproveLoading(false);
+    }
+  };
 
   const handleOpenProjectDetail = () => {
     modalManager.openModal(p2pProjectDetailDrawer.id, project);
@@ -104,13 +158,8 @@ export const AuthProjectTag = (props: IProps) => {
                 item.status === StatusEnum.PROCESS &&
                 voteId ? (
                   <Space>
-                    <div
-                      className={styles.agree}
-                      onClick={() =>
-                        viewInstance.process(StatusEnum.AGREE, voteId, pathname)
-                      }
-                    >
-                      同意
+                    <div className={styles.agree} onClick={openApprove}>
+                      同意并挂载数据
                     </div>
                     <Popconfirm
                       title="你确定要拒绝吗？"
@@ -173,6 +222,36 @@ export const AuthProjectTag = (props: IProps) => {
           );
         })}
       </div>
+      <Modal
+        title="同意项目并挂载本节点数据"
+        open={approveOpen}
+        confirmLoading={approveLoading}
+        okText="提交并同意"
+        cancelText="取消"
+        onCancel={() => setApproveOpen(false)}
+        onOk={() => approveForm.submit()}
+      >
+        <Form form={approveForm} layout="vertical" onFinish={approveWithAssets}>
+          <Form.Item
+            name="assetIds"
+            label="本节点挂载数据（可选）"
+            tooltip="所选数据会与创建方及其他参与方挂载的数据合并为项目共享数据目录"
+          >
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择源数据或抽样脱敏后的数据"
+              options={localAssets.map((asset) => ({
+                value: asset.id,
+                label: `${asset.name}（${
+                  asset.data_stage === 'RAW' ? '源数据' : '抽样脱敏数据'
+                }）`,
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

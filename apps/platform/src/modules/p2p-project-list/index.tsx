@@ -1,4 +1,9 @@
-import { DatabaseOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
+import {
+  CloudServerOutlined,
+  DatabaseOutlined,
+  EditOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
 import { Empty, Form, Modal, Select, Table, Tag, message } from 'antd';
 import { Button, Typography, Tooltip, Input, Space } from 'antd';
 import { Spin } from 'antd';
@@ -91,6 +96,9 @@ export const P2pProjectListComponent: React.FC = () => {
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachAssets, setAttachAssets] = useState<DataSandboxRecord[]>([]);
   const [attachForm] = Form.useForm();
+  const [sandboxOpen, setSandboxOpen] = useState(false);
+  const [sandboxProjectName, setSandboxProjectName] = useState('');
+  const [projectSandboxes, setProjectSandboxes] = useState<DataSandboxRecord[]>([]);
 
   const openProjectAssets = async (projectId: string) => {
     setAssetProjectId(projectId);
@@ -101,6 +109,16 @@ export const P2pProjectListComponent: React.FC = () => {
     } finally {
       setAssetLoading(false);
     }
+  };
+
+  const openProjectSandboxes = (projectId: string, projectName: string) => {
+    setProjectSandboxes(
+      sandboxEnvironments.filter(
+        (sandbox) => sandbox.project_id === projectId && !sandbox.deleted,
+      ),
+    );
+    setSandboxProjectName(projectName);
+    setSandboxOpen(true);
   };
 
   const { Link } = Typography;
@@ -303,12 +321,23 @@ export const P2pProjectListComponent: React.FC = () => {
                               flex: 1,
                             }}
                           >
-                            <div className={styles.titleName}>训练流</div>
+                            <div className={styles.titleName}>沙箱数</div>
                             <span
                               className={styles.count}
-                              onClick={handleOpenProjectDetail(item, TabKey.PIPELINES)}
+                              onClick={() =>
+                                openProjectSandboxes(
+                                  item.projectId as string,
+                                  item.projectName as string,
+                                )
+                              }
                             >
-                              {item.graphCount}
+                              {
+                                sandboxEnvironments.filter(
+                                  (sandbox) =>
+                                    sandbox.project_id === item.projectId &&
+                                    !sandbox.deleted,
+                                ).length
+                              }
                             </span>
                           </div>
                           <div className={styles.task}>
@@ -355,6 +384,18 @@ export const P2pProjectListComponent: React.FC = () => {
                       >
                         数据目录
                       </Button>
+                      <Button
+                        type="link"
+                        icon={<CloudServerOutlined />}
+                        onClick={() =>
+                          openProjectSandboxes(
+                            item.projectId as string,
+                            item.projectName as string,
+                          )
+                        }
+                      >
+                        沙箱目录
+                      </Button>
                       <P2pProjectButtons project={item} />
                     </div>
                   </div>
@@ -389,7 +430,7 @@ export const P2pProjectListComponent: React.FC = () => {
             onClick={async () => {
               setAttachAssets(
                 responseData(await DataAssetApi.catalog({}), []).filter(
-                  (asset: DataSandboxRecord) => asset.provider_node_id === ownerId,
+                  (asset: DataSandboxRecord) => asset.owned !== false,
                 ),
               );
               setAttachOpen(true);
@@ -436,13 +477,96 @@ export const P2pProjectListComponent: React.FC = () => {
               render: (_: unknown, row: DataSandboxRecord) => (
                 <Button
                   type="link"
-                  onClick={async () =>
-                    setPreview(responseData(await DataAssetApi.preview(row.id, 5), {}))
-                  }
+                  onClick={async () => {
+                    if (row.owned === false) {
+                      setPreview({
+                        asset: row,
+                        columns: row.schema_columns || [],
+                        rows: [],
+                        sharedMetadataOnly: true,
+                      });
+                      return;
+                    }
+                    setPreview(responseData(await DataAssetApi.preview(row.id, 5), {}));
+                  }}
                 >
                   格式预览
                 </Button>
               ),
+            },
+          ]}
+        />
+      </Modal>
+      <Modal
+        title={`项目沙箱目录${sandboxProjectName ? ` · ${sandboxProjectName}` : ''}`}
+        open={sandboxOpen}
+        width={1200}
+        footer={null}
+        onCancel={() => setSandboxOpen(false)}
+      >
+        <Table
+          rowKey="id"
+          dataSource={projectSandboxes}
+          scroll={{ x: 1200 }}
+          columns={[
+            { title: '沙箱名称', dataIndex: 'name', fixed: 'left', width: 180 },
+            {
+              title: '创建节点',
+              dataIndex: 'owner_node_name',
+              width: 150,
+              render: (value: string, row: DataSandboxRecord) =>
+                value || row.owner_id || '-',
+            },
+            {
+              title: '创建人',
+              dataIndex: 'created_by',
+              width: 120,
+              render: (value: string) => value || '-',
+            },
+            {
+              title: '创建时间',
+              dataIndex: 'created_at',
+              width: 180,
+              render: (value: string) => (value ? formatTimestamp(value) : '-'),
+            },
+            {
+              title: '描述',
+              dataIndex: 'description',
+              width: 220,
+              ellipsis: true,
+              render: (value: string) => value || '暂无描述',
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 110,
+              render: (value: string) => <Tag>{value || '-'}</Tag>,
+            },
+            {
+              title: '环境镜像',
+              dataIndex: 'image_name',
+              width: 150,
+              render: (value: string) => value || '-',
+            },
+            {
+              title: '资源规格',
+              width: 230,
+              render: (_: unknown, row: DataSandboxRecord) =>
+                `${row.cpu_cores || 0}C / ${row.memory_gb || 0}GB / GPU ${
+                  row.gpu_count || 0
+                } / ${row.storage_gb || 0}GB`,
+            },
+            {
+              title: '网络策略',
+              dataIndex: 'network_policy',
+              width: 140,
+              render: (value: string) => value || '-',
+            },
+            {
+              title: '到期时间',
+              dataIndex: 'expires_at',
+              width: 180,
+              render: (value: string) => (value ? formatTimestamp(value) : '-'),
             },
           ]}
         />
