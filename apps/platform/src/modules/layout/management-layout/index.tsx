@@ -21,14 +21,20 @@ import { DefaultModalManager } from '@/modules/dag-modal-manager';
 import { useModel } from '@/util/valtio-helper';
 
 type ManagementLayoutComponentProps = {
-  menuItems: {
-    label: string;
-    icon: React.ReactNode;
-    component: React.ReactNode;
-    key: string;
-  }[];
+  menuItems: ManagementMenuItem[];
   defaultTabKey?: string;
 };
+
+export type ManagementMenuItem = {
+  label: string;
+  icon: React.ReactNode;
+  key: string;
+  component?: React.ReactNode;
+  children?: ManagementMenuItem[];
+};
+
+const leafItems = (items: ManagementMenuItem[]): ManagementMenuItem[] =>
+  items.flatMap((item) => (item.children?.length ? leafItems(item.children) : [item]));
 
 class ManagementPageBoundary extends Component<
   { children: ReactNode },
@@ -70,6 +76,7 @@ export const ManagementLayoutComponent = (props: ManagementLayoutComponentProps)
   const modalManager = useModel(DefaultModalManager);
 
   const { menuItems, defaultTabKey } = props;
+  const pages = useMemo(() => leafItems(menuItems), [menuItems]);
   const [collapsed, setCollapsed] = useState(false);
 
   const { pathname, search } = useLocation();
@@ -159,7 +166,7 @@ export const ManagementLayoutComponent = (props: ManagementLayoutComponentProps)
       >
         <Suspense fallback={<Spin />}>
           <ManagementPageBoundary key={tabKey}>
-            {menuItems.find(({ key }) => key === tabKey)?.component}
+            {pages.find(({ key }) => key === tabKey)?.component}
           </ManagementPageBoundary>
         </Suspense>
       </div>

@@ -242,6 +242,7 @@ manipulate, derived from the value returned by the back end in the uplink mouth 
     description?: string;
     /** computeMode mpc,tee */
     computeMode?: string;
+    developmentModes?: string[];
     /** tee node domainId */
     teeNodeId?: string;
     computeFunc?: string;
@@ -1881,6 +1882,7 @@ result management list interface */
     gmtCreate?: string;
     /** computeMode mpc,tee */
     computeMode?: string;
+    developmentModes?: string[];
     /** tee node domainId */
     teeNodeId?: string;
     /** project approval status {@link org.secretflow.secretpad.common.enums.ProjectStatusEnum} */

@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  DataComputeApi,
   DataDevApi,
   DataModelApi,
   DataSandboxRecord,
@@ -372,6 +373,18 @@ export const ModelCenterComponent = () => {
     }
   };
 
+  const publishAsComponent = async (row: DataSandboxRecord) => {
+    try {
+      const component = responseData(
+        await DataComputeApi.publishComponent({ modelId: row.id, name: row.name }),
+        {},
+      );
+      message.success(`已发布为建模组件：${component.code}`);
+    } catch (error: any) {
+      message.error(error.message || '发布组件失败');
+    }
+  };
+
   const deleteModel = async (row: DataSandboxRecord) => {
     Modal.confirm({
       title: `删除模型 ${row.name}？`,
@@ -693,6 +706,11 @@ export const ModelCenterComponent = () => {
               提交审批
             </Button>
           )}
+          {['APPROVED', 'PUBLISHED'].includes(row.status) && (
+            <Button type="link" onClick={() => publishAsComponent(row)}>
+              发布组件
+            </Button>
+          )}
           {['DRAFT', 'REJECTED', 'OFFLINE'].includes(row.status) && (
             <Button type="link" danger onClick={() => deleteModel(row)}>
               删除
@@ -869,8 +887,8 @@ export const ModelCenterComponent = () => {
 
   return (
     <MvpPage
-      title="模型中心"
-      description="模型注册（JAR/Python 制品+版本+项目）→ 两级审批（强制测试门禁）→ 测试执行与评估 → 受控 API 发布与调用"
+      title="沙箱智能建模：自定义算法"
+      description="将当前沙箱调试成功的 JAR/Python 制品保存为算法，经模型审批后发布为建模组件或受控 API"
       extra={
         <RefreshButton
           loading={modelsLoading || approvalsLoading || testsLoading || apisLoading}

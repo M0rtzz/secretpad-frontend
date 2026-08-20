@@ -1,5 +1,5 @@
-import { EditOutlined, SearchOutlined } from '@ant-design/icons';
-import { Empty, Tag } from 'antd';
+import { DatabaseOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
+import { Empty, Form, Modal, Select, Table, Tag, message } from 'antd';
 import { Button, Typography, Tooltip, Input, Space } from 'antd';
 import { Spin } from 'antd';
 import classNames from 'classnames';
@@ -11,9 +11,17 @@ import { history, useLocation } from 'umi';
 
 import { EdgeRouteWrapper, isP2PWorkbench } from '@/components/platform-wrapper';
 import { P2PCreateProjectModal } from '@/modules/create-project/p2p-create-project/p2p-create-project.view';
+import { ProjectType } from '@/modules/create-project/p2p-create-project/compute-func-data';
 import { formatTimestamp } from '@/modules/dag-result/utils';
+import { DataAssetPreviewTable } from '@/modules/data-catalog/preview-table';
 import { EditProjectModal } from '@/modules/project-list/components/edit-project';
 import { getModel, Model, useModel } from '@/util/valtio-helper';
+import {
+  DataAssetApi,
+  DataSandboxApi,
+  DataSandboxRecord,
+  responseData,
+} from '@/services/data-sandbox';
 
 import { DefaultModalManager } from '../dag-modal-manager';
 import {
@@ -61,14 +69,39 @@ export const P2pProjectListComponent: React.FC = () => {
   const { Title, Paragraph } = Typography;
 
   const { ownerId } = parse(window.location.search);
+  const [sandboxEnvironments, setSandboxEnvironments] = useState<DataSandboxRecord[]>(
+    [],
+  );
 
   useEffect(() => {
     p2pProjectService.getListProject();
+    DataSandboxApi.sandboxes({}).then((response) =>
+      setSandboxEnvironments(responseData(response, [])),
+    );
   }, []);
 
   const [editProjectData, setEditProjectData] = useState({});
 
   const [hoverCurrent, setHoverCurrent] = useState(-1);
+  const [assetOpen, setAssetOpen] = useState(false);
+  const [assetLoading, setAssetLoading] = useState(false);
+  const [projectAssets, setProjectAssets] = useState<DataSandboxRecord[]>([]);
+  const [preview, setPreview] = useState<DataSandboxRecord>();
+  const [assetProjectId, setAssetProjectId] = useState('');
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [attachAssets, setAttachAssets] = useState<DataSandboxRecord[]>([]);
+  const [attachForm] = Form.useForm();
+
+  const openProjectAssets = async (projectId: string) => {
+    setAssetProjectId(projectId);
+    setAssetOpen(true);
+    setAssetLoading(true);
+    try {
+      setProjectAssets(responseData(await DataAssetApi.projectAssets(projectId), []));
+    } finally {
+      setAssetLoading(false);
+    }
+  };
 
   const { Link } = Typography;
 
@@ -194,21 +227,20 @@ export const P2pProjectListComponent: React.FC = () => {
                         </div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <Tooltip
-                          title={
-                            item.computeMode === ComputeModeType.TEE
-                              ? item.teeNodeId
-                              : ''
-                          }
-                        >
-                          <Tag className={styles.computeModeTag}>
-                            {computeModeText[
-                              item.computeMode as keyof typeof computeModeText
-                            ] || computeModeText[ComputeModeType.MPC]}
+                        {(item.developmentModes || []).map((mode: string) => (
+                          <Tag key={mode} color="blue">
+                            {{
+                              SQL: 'SQL',
+                              PYTHON: 'Python',
+                              FUNCTION_ECOSYSTEM: '函数与生态库管理',
+                              JAR: 'JAR 计算',
+                            }[mode] || mode}
                           </Tag>
-                        </Tooltip>
+                        ))}
                         <div style={{ marginRight: 8 }}>
-                          <ProjectTypeTag type={item.computeFunc || 'DAG'} />
+                          <ProjectTypeTag
+                            type={(item.computeFunc || 'DAG') as ProjectType}
+                          />
                         </div>
                         <div className={styles.header} style={{ flex: 1 }}>
                           <Tooltip title={item.projectName}>
@@ -292,10 +324,37 @@ export const P2pProjectListComponent: React.FC = () => {
                       )}
 
                       <div className={styles.time}>
-                        创建于{formatTimestamp(item.gmtCreate as string)}
+                        创建人：{item.initiatorName || item.initiator || '-'} · 创建于
+                        {formatTimestamp(item.gmtCreate as string)}
+                      </div>
+                      <div className={styles.time}>
+                        环境状态：
+                        {(() => {
+                          const related = sandboxEnvironments.filter(
+                            (sandbox) =>
+                              sandbox.project_id === item.projectId && !sandbox.deleted,
+                          );
+                          if (!related.length) return '未申请';
+                          if (related.some((sandbox) => sandbox.status === 'RUNNING'))
+                            return '运行中';
+                          if (
+                            related.some((sandbox) =>
+                              ['APPROVED', 'STARTING'].includes(sandbox.status),
+                            )
+                          )
+                            return '申请/启动中';
+                          return related.map((sandbox) => sandbox.status).join('、');
+                        })()}
                       </div>
                     </div>
                     <div className={styles.bootom}>
+                      <Button
+                        type="link"
+                        icon={<DatabaseOutlined />}
+                        onClick={() => openProjectAssets(item.projectId as string)}
+                      >
+                        数据目录
+                      </Button>
                       <P2pProjectButtons project={item} />
                     </div>
                   </div>
@@ -320,6 +379,124 @@ export const P2pProjectListComponent: React.FC = () => {
         onEdit={p2pProjectService.projectEdit}
       />
       <P2pProjectDetailDrawer />
+      <Modal
+        title="项目挂载数据目录"
+        open={assetOpen}
+        width={1050}
+        footer={
+          <Button
+            type="primary"
+            onClick={async () => {
+              setAttachAssets(
+                responseData(await DataAssetApi.catalog({}), []).filter(
+                  (asset: DataSandboxRecord) => asset.provider_node_id === ownerId,
+                ),
+              );
+              setAttachOpen(true);
+            }}
+          >
+            挂载本节点数据
+          </Button>
+        }
+        onCancel={() => setAssetOpen(false)}
+      >
+        <Table
+          rowKey="id"
+          loading={assetLoading}
+          dataSource={projectAssets}
+          scroll={{ x: 900 }}
+          columns={[
+            { title: '数据集名称', dataIndex: 'name' },
+            {
+              title: '数据提供方',
+              dataIndex: 'provider_node_name',
+              render: (v: string, row: DataSandboxRecord) => v || row.provider_node_id,
+            },
+            {
+              title: '数据类型',
+              dataIndex: 'data_stage',
+              render: (v: string) => (
+                <Tag color={v === 'RAW' ? 'orange' : 'green'}>
+                  {v === 'RAW' ? '源数据' : '抽样脱敏后数据'}
+                </Tag>
+              ),
+            },
+            {
+              title: '挂载时间',
+              dataIndex: 'attached_at',
+              render: (v: string) => formatTimestamp(v),
+            },
+            {
+              title: '有效期',
+              dataIndex: 'valid_until',
+              render: (v: string) => (v ? formatTimestamp(v) : '长期有效'),
+            },
+            {
+              title: '操作',
+              render: (_: unknown, row: DataSandboxRecord) => (
+                <Button
+                  type="link"
+                  onClick={async () =>
+                    setPreview(responseData(await DataAssetApi.preview(row.id, 5), {}))
+                  }
+                >
+                  格式预览
+                </Button>
+              ),
+            },
+          ]}
+        />
+      </Modal>
+      <Modal
+        title="数据格式及样例预览"
+        open={!!preview}
+        width={850}
+        footer={null}
+        onCancel={() => setPreview(undefined)}
+      >
+        <DataAssetPreviewTable preview={preview} />
+      </Modal>
+      <Modal
+        title="挂载本节点数据到项目"
+        open={attachOpen}
+        onCancel={() => setAttachOpen(false)}
+        onOk={() => attachForm.submit()}
+      >
+        <Form
+          form={attachForm}
+          layout="vertical"
+          onFinish={async ({ assetIds }) => {
+            try {
+              setProjectAssets(
+                responseData(
+                  await DataAssetApi.attachProjectAssets({
+                    projectId: assetProjectId,
+                    assetIds,
+                  }),
+                  [],
+                ),
+              );
+              message.success('数据已挂载到项目');
+              setAttachOpen(false);
+              attachForm.resetFields();
+            } catch (error: any) {
+              message.error(error.message || '挂载失败');
+            }
+          }}
+        >
+          <Form.Item name="assetIds" label="数据" rules={[{ required: true }]}>
+            <Select
+              mode="multiple"
+              options={attachAssets.map((asset) => ({
+                value: asset.id,
+                label: `${asset.name}（${
+                  asset.data_stage === 'RAW' ? '源数据' : '抽样脱敏数据'
+                }）`,
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

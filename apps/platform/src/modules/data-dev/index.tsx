@@ -20,7 +20,14 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 
-import { DataDevApi, DataSandboxRecord, responseData } from '@/services/data-sandbox';
+import {
+  DataComputeApi,
+  DataDevApi,
+  DataSandboxRecord,
+  responseData,
+} from '@/services/data-sandbox';
+import { parse } from 'query-string';
+import { useLocation } from 'umi';
 import { listP2PProject } from '@/services/secretpad/P2PProjectController';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
 
@@ -106,6 +113,9 @@ const renderPreviewTable = (preview: DataSandboxRecord) => {
 };
 
 export const DataDevComponent = () => {
+  const computeQuery = parse(useLocation().search);
+  const sandboxId = String(computeQuery.sandboxId || '');
+  const [sandboxMounts, setSandboxMounts] = useState<DataSandboxRecord[]>([]);
   /* --------------------------------- 制品 --------------------------------- */
   const [artifacts, setArtifacts] = useState<DataSandboxRecord[]>([]);
   const [artifactLoading, setArtifactLoading] = useState(false);
@@ -243,6 +253,13 @@ export const DataDevComponent = () => {
   useEffect(() => {
     refreshDeps();
   }, [refreshDeps]);
+
+  useEffect(() => {
+    if (!sandboxId) return;
+    DataComputeApi.context(sandboxId)
+      .then((res) => setSandboxMounts(responseData(res, {}).mounts || []))
+      .catch((error: any) => message.error(error.message || '加载沙箱挂载数据失败'));
+  }, [sandboxId]);
 
   useEffect(() => {
     if (taskOpen) {
@@ -422,9 +439,12 @@ export const DataDevComponent = () => {
   };
 
   const previewSource = async () => {
-    const { nodeId, datatableId, limit } = taskForm.getFieldsValue();
+    const { mountId, limit } = taskForm.getFieldsValue();
+    const mount = sandboxMounts.find((item) => item.id === mountId);
+    const nodeId = mount?.processor_node_id || mount?.provider_node_id;
+    const datatableId = mount?.datatable_id;
     if (!nodeId || !datatableId) {
-      message.warning('请先填写源节点与数据表 ID');
+      message.warning('请选择包含可计算数据表的沙箱挂载数据');
       return;
     }
     try {
@@ -1202,11 +1222,10 @@ export const DataDevComponent = () => {
                 mode="multiple"
                 allowClear
                 placeholder="选择白名单依赖（可在依赖白名单页管理）"
-              >
-                {deps
+                options={deps
                   .filter((d) => d.enabled === 1)
                   .map((d) => ({ value: d.name, label: d.name }))}
-              </Select>
+              />
             </Form.Item>
           )}
           <Form.Item name="description" label="版本说明">
@@ -1407,15 +1426,20 @@ export const DataDevComponent = () => {
             </Form.Item>
           </Space>
           <Space size="large" wrap style={{ width: '100%' }}>
-            <Form.Item name="nodeId" label="源节点" rules={[{ required: true }]}>
-              <Input placeholder="例如 alice" style={{ width: 180 }} />
-            </Form.Item>
-            <Form.Item
-              name="datatableId"
-              label="源数据表 ID"
-              rules={[{ required: true }]}
-            >
-              <Input placeholder="数据表 ID" style={{ width: 200 }} />
+            <Form.Item name="mountId" label="沙箱可用数据" rules={[{ required: true }]}>
+              <Select
+                style={{ width: 320 }}
+                showSearch
+                optionFilterProp="label"
+                placeholder="选择已挂载的抽样脱敏数据"
+                options={sandboxMounts.map((item) => ({
+                  value: item.id,
+                  label: `${item.asset_name}（${
+                    item.provider_node_name || item.provider_node_id
+                  }）`,
+                  disabled: item.status !== 'READY' || !item.datatable_id,
+                }))}
+              />
             </Form.Item>
             <Form.Item label="源数据预览">
               <Space>
@@ -1520,11 +1544,14 @@ export const DataDevComponent = () => {
                   </Form.Item>
                   {taskExec === 'PYTHON' && (
                     <Form.Item name="dependencyNames" label="依赖库白名单">
-                      <Select mode="multiple" allowClear placeholder="选择白名单依赖">
-                        {deps
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        placeholder="选择白名单依赖"
+                        options={deps
                           .filter((d) => d.enabled === 1)
                           .map((d) => ({ value: d.name, label: d.name }))}
-                      </Select>
+                      />
                     </Form.Item>
                   )}
                   <Form.Item label="保存任务">

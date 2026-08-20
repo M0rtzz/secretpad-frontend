@@ -2,6 +2,7 @@ import { message } from 'antd';
 import { parse } from 'query-string';
 import { listNode } from '@/services/secretpad/InstController';
 import API from '@/services/secretpad';
+import { DataAssetApi, responseData } from '@/services/data-sandbox';
 import { Model } from '@/util/valtio-helper';
 
 export type Options = {
@@ -20,6 +21,7 @@ export class P2PCreateProjectService extends Model {
 
   /** 本方机构下的所有可用节点 */
   nodeListOptions: Options[] = [];
+  assetListOptions: Options[] = [];
 
   /** 本方节点与之授权的节点 */
   nodeVotersMaps: Record<
@@ -46,6 +48,18 @@ export class P2PCreateProjectService extends Model {
     } else {
       message.error(status?.msg);
     }
+  };
+
+  getAssetList = async () => {
+    const assets = responseData(await DataAssetApi.catalog({}), []);
+    this.assetListOptions = assets
+      .filter((asset) => asset.provider_node_id)
+      .map((asset) => ({
+        value: asset.id,
+        label: `${asset.name}（${
+          asset.data_stage === 'RAW' ? '源数据' : '抽样脱敏数据'
+        }）`,
+      }));
   };
 
   /** 获取本方机构与之授权成功的节点 且合作节点路由是可用状态 */
@@ -78,11 +92,13 @@ export class P2PCreateProjectService extends Model {
     description: string;
     computeFunc: string;
     computeMode: string;
+    developmentModes: string[];
     nodeVoters: { nodes: string[]; nodeId: string }[];
     dataSheet?: string[];
+    assetIds?: string[];
   }) => {
     const { ownerId } = parse(window.location.search);
-    const { projectName, description, computeFunc, computeMode, nodeVoters } = value;
+    const { projectName, description, developmentModes, nodeVoters, assetIds } = value;
     const participants = [ownerId]; // 参与方机构
     const participantNodeInstVOS = (nodeVoters || []).map(
       (item: { nodes: string[]; nodeId: string }) => {
@@ -110,8 +126,7 @@ export class P2PCreateProjectService extends Model {
       await API.P2PProjectController.createP2PProject({
         name: projectName,
         description,
-        computeMode,
-        computeFunc,
+        developmentModes,
       });
     if (createProjectStatus?.code && createProjectStatus.code !== 0) {
       this.loading = false;
@@ -130,6 +145,9 @@ export class P2PCreateProjectService extends Model {
     if (status && status.code !== 0) {
       message.error(status.msg);
     } else {
+      if (data?.projectId && assetIds?.length) {
+        await DataAssetApi.attachProjectAssets({ projectId: data.projectId, assetIds });
+      }
       message.success('申请成功');
     }
     this.loading = false;

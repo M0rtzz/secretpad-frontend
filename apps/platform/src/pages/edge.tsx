@@ -1,16 +1,19 @@
 import Icon from '@ant-design/icons';
 import {
   ApiOutlined,
+  AppstoreOutlined,
   AuditOutlined,
+  BarChartOutlined,
+  CalculatorOutlined,
   CodeOutlined,
   DashboardOutlined,
   DeploymentUnitOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
   FundOutlined,
+  PartitionOutlined,
   SafetyCertificateOutlined,
   ToolOutlined,
-  ExperimentOutlined as ModelingOutlined,
 } from '@ant-design/icons';
 import { parse } from 'query-string';
 import { lazy, useEffect } from 'react';
@@ -25,6 +28,9 @@ import { ReactComponent as Workbench } from '@/assets/workbench.svg';
 import { CooperativeNodeListComponent } from '@/modules/cooperative-node-list';
 import { DataManagerComponent } from '@/modules/data-manager/data-manager.view';
 import { DataSourceListComponent } from '@/modules/data-source-list';
+import { DataUploadComponent } from '@/modules/data-upload';
+import { DataCatalogComponent } from '@/modules/data-catalog';
+import { UsageControlComponent } from '@/modules/usage-control';
 import { HomeLayout } from '@/modules/layout/home-layout';
 import { HomeLayoutService } from '@/modules/layout/home-layout/home-layout.service';
 import { ManagementLayoutComponent } from '@/modules/layout/management-layout';
@@ -71,8 +77,33 @@ const DataGovernanceComponent = lazy(() =>
     }),
   ),
 );
-const DataDevComponent = lazy(() =>
-  import('@/modules/data-dev').then(({ DataDevComponent: Component }) => ({
+const DataComputeHomeComponent = lazy(() =>
+  import('@/modules/data-compute').then(({ DataComputeHomeComponent: Component }) => ({
+    default: Component,
+  })),
+);
+const SandboxDevelopmentComponent = lazy(() =>
+  import('@/modules/data-compute').then(
+    ({ SandboxDevelopmentComponent: Component }) => ({ default: Component }),
+  ),
+);
+const CustomAlgorithmComponent = lazy(() =>
+  import('@/modules/data-compute').then(({ CustomAlgorithmComponent: Component }) => ({
+    default: Component,
+  })),
+);
+const ModelingComponentsComponent = lazy(() =>
+  import('@/modules/data-compute').then(
+    ({ ModelingComponentsComponent: Component }) => ({ default: Component }),
+  ),
+);
+const VisualModelingComponent = lazy(() =>
+  import('@/modules/data-compute').then(({ VisualModelingComponent: Component }) => ({
+    default: Component,
+  })),
+);
+const ModelReportsComponent = lazy(() =>
+  import('@/modules/data-compute').then(({ ModelReportsComponent: Component }) => ({
     default: Component,
   })),
 );
@@ -95,40 +126,123 @@ const OperationCenterComponent = lazy(() =>
     }),
   ),
 );
-const ModelCenterComponent = lazy(() =>
-  import('@/modules/model-center').then(({ ModelCenterComponent: Component }) => ({
-    default: Component,
-  })),
-);
-const IntelligentModelingComponent = lazy(() =>
-  import('@/modules/intelligent-modeling').then(
-    ({ IntelligentModelingComponent: Component }) => ({ default: Component }),
-  ),
-);
-
 const menuItems: {
   label: string;
   icon: React.ReactNode;
-  component: React.ReactNode;
+  component?: React.ReactNode;
   key: string;
+  children?: any[];
 }[] = [
+  {
+    label: '我的项目',
+    icon: <Icon component={projectManager} />,
+    component: <P2pProjectListComponent />,
+    key: 'my-project',
+  },
+  {
+    label: '数据管理',
+    icon: <Icon component={DataManager} />,
+    key: 'data-management',
+    children: [
+      {
+        label: '数据上传',
+        key: 'data-upload',
+        icon: <Icon component={DataSource} />,
+        component: <DataUploadComponent />,
+      },
+      {
+        label: '数据目录',
+        key: 'data-catalog',
+        icon: <Icon component={DataManager} />,
+        component: <DataCatalogComponent />,
+      },
+      {
+        label: '数据抽样与脱敏',
+        key: 'data-governance',
+        icon: <DeploymentUnitOutlined />,
+        component: <DataGovernanceComponent />,
+      },
+      {
+        label: '使用控制',
+        key: 'usage-control',
+        icon: <SafetyCertificateOutlined />,
+        component: <UsageControlComponent />,
+      },
+    ],
+  },
+  {
+    label: '资源管理',
+    icon: <DashboardOutlined />,
+    key: 'resource-management',
+    children: [
+      {
+        label: '沙箱资源申请',
+        key: 'sandbox-resource-application',
+        icon: <ExperimentOutlined />,
+        component: <SandboxManagerComponent />,
+      },
+      {
+        label: '沙箱资源审核',
+        key: 'sandbox-resource-review',
+        icon: <AuditOutlined />,
+        component: <SandboxApprovalComponent />,
+      },
+      {
+        label: '资源监控',
+        key: 'resource-monitor',
+        icon: <DashboardOutlined />,
+        component: <ResourceManagerComponent />,
+      },
+    ],
+  },
+  {
+    label: '数据计算',
+    icon: <CalculatorOutlined />,
+    key: 'data-compute',
+    children: [
+      {
+        label: '数据计算首页',
+        key: 'data-compute-home',
+        icon: <DashboardOutlined />,
+        component: <DataComputeHomeComponent />,
+      },
+      {
+        label: '沙箱方式开发',
+        key: 'data-compute-dev',
+        icon: <CodeOutlined />,
+        component: <SandboxDevelopmentComponent />,
+      },
+      {
+        label: '自定义算法',
+        key: 'data-compute-algorithm',
+        icon: <FundOutlined />,
+        component: <CustomAlgorithmComponent />,
+      },
+      {
+        label: '建模组件',
+        key: 'data-compute-components',
+        icon: <AppstoreOutlined />,
+        component: <ModelingComponentsComponent />,
+      },
+      {
+        label: '可视化建模',
+        key: 'data-compute-visual',
+        icon: <PartitionOutlined />,
+        component: <VisualModelingComponent />,
+      },
+      {
+        label: '模型报告信息',
+        key: 'data-compute-report',
+        icon: <BarChartOutlined />,
+        component: <ModelReportsComponent />,
+      },
+    ],
+  },
   {
     label: '工作台',
     icon: <Icon component={Workbench} />,
     component: <P2PWorkbenchComponent />,
     key: 'workbench',
-  },
-  {
-    label: '数据源管理',
-    icon: <Icon component={DataSource} />,
-    component: <DataSourceListComponent />,
-    key: 'data-source',
-  },
-  {
-    label: '数据管理',
-    icon: <Icon component={DataManager} />,
-    component: <DataManagerComponent />,
-    key: 'data-management',
   },
   {
     label: '合作节点',
@@ -137,58 +251,10 @@ const menuItems: {
     key: 'connected-node',
   },
   {
-    label: '我的项目',
-    icon: <Icon component={projectManager} />,
-    component: <P2pProjectListComponent />,
-    key: 'my-project',
-  },
-  {
     label: '结果管理',
     icon: <Icon component={ResultManager} />,
     component: <ResultManagerComponent />,
     key: 'result',
-  },
-  {
-    label: '沙箱管理',
-    icon: <ExperimentOutlined />,
-    component: <SandboxManagerComponent />,
-    key: 'sandbox-manager',
-  },
-  {
-    label: '沙箱申请审批',
-    icon: <AuditOutlined />,
-    component: <SandboxApprovalComponent />,
-    key: 'sandbox-approval',
-  },
-  {
-    label: '智能建模',
-    icon: <ModelingOutlined />,
-    component: <IntelligentModelingComponent />,
-    key: 'intelligent-modeling',
-  },
-  {
-    label: '数据治理',
-    icon: <DeploymentUnitOutlined />,
-    component: <DataGovernanceComponent />,
-    key: 'data-governance',
-  },
-  {
-    label: '数据开发',
-    icon: <CodeOutlined />,
-    component: <DataDevComponent />,
-    key: 'data-dev',
-  },
-  {
-    label: '模型中心',
-    icon: <FundOutlined />,
-    component: <ModelCenterComponent />,
-    key: 'model-center',
-  },
-  {
-    label: '资源管理',
-    icon: <DashboardOutlined />,
-    component: <ResourceManagerComponent />,
-    key: 'resource-manager',
   },
   {
     label: '模型审批',
@@ -249,7 +315,7 @@ const EdgePage = () => {
   }, []);
   return (
     <HomeLayout>
-      <ManagementLayoutComponent menuItems={menuItems} defaultTabKey={'workbench'} />
+      <ManagementLayoutComponent menuItems={menuItems} defaultTabKey={'my-project'} />
     </HomeLayout>
   );
 };

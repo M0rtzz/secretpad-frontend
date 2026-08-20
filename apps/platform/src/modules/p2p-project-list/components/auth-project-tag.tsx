@@ -101,7 +101,8 @@ export const AuthProjectTag = (props: IProps) => {
                 {/* 当前项目是待审批状态，且当前节点是本方节点，并且本方节点是待处理状态 */}
                 {project.status === ProjectStatus.REVIEWING &&
                 currentInst.id === item.id &&
-                item.status === StatusEnum.PROCESS ? (
+                item.status === StatusEnum.PROCESS &&
+                voteId ? (
                   <Space>
                     <div
                       className={styles.agree}

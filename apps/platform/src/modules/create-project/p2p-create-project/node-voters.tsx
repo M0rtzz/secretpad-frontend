@@ -83,10 +83,10 @@ export const NodeVoters = () => {
                 <Form.Item
                   {...restField}
                   className={styles.nodeInfoformLabel}
-                  label="受邀节点"
+                  label="合作节点 / 供数方节点"
                   name={[name, 'nodes']}
                   required
-                  tooltip="只能选择已建立好授权的节点，最多可选9个"
+                  tooltip="节点角色允许重叠；挂载数据的节点同时作为对应数据的供数方。只能选择已建立授权的节点，最多9个"
                 >
                   <AddNodeTag
                     nodeList={getNodeList(name)}

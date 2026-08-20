@@ -36,7 +36,7 @@ export const UpdateFuncModal = ({
   };
 
   const updateFunList = computeFuncList.filter(
-    (item) => item.type !== (data?.computedFunc || ProjectType.DAG),
+    (item) => item.type !== (data?.computeFunc || ProjectType.DAG),
   );
 
   return (

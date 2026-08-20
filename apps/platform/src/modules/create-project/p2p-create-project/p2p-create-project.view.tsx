@@ -1,14 +1,10 @@
-import { QuestionCircleOutlined } from '@ant-design/icons';
-import { Input, Form, Drawer, Button, Space, Radio, Tooltip, Alert } from 'antd';
+import { Input, Form, Drawer, Button, Space, Select, Alert } from 'antd';
 import classnames from 'classnames';
 import { parse } from 'query-string';
 import React from 'react';
 
-import { AccessWrapper, PadMode, hasAccess } from '@/components/platform-wrapper';
-import { SwitchCard } from '@/components/switch-card';
 import { useModel } from '@/util/valtio-helper';
 
-import { computeFuncList } from './compute-func-data';
 import styles from './index.less';
 import { P2PCreateProjectService } from './p2p-create-project.service';
 import { NodeVoters } from './node-voters';
@@ -37,6 +33,7 @@ export const P2PCreateProjectModal = ({
   React.useEffect(() => {
     if (visible && ownerId) {
       viewInstance.getNodeList();
+      viewInstance.getAssetList();
     }
   }, [ownerId, visible]);
 
@@ -122,51 +119,35 @@ export const P2PCreateProjectModal = ({
           />
         </Form.Item>
         <Form.Item
-          label="计算功能"
+          label="开发方式"
           required
           className={styles.formLabelItem}
-          name="computeFunc"
-          initialValue={computeFuncList[0].type}
+          name="developmentModes"
+          rules={[{ required: true, message: '请至少选择一种开发方式' }]}
         >
-          <SwitchCard cardList={computeFuncList} />
+          <Select
+            mode="multiple"
+            placeholder="可多选"
+            options={[
+              { value: 'SQL', label: 'SQL' },
+              { value: 'PYTHON', label: 'Python' },
+              { value: 'FUNCTION_ECOSYSTEM', label: '函数与生态库管理' },
+              { value: 'JAR', label: 'JAR 计算' },
+            ]}
+          />
         </Form.Item>
         <Form.Item
-          label="计算模式"
-          required
-          className={styles.formLabelItem}
-          name="computeMode"
-          initialValue={hasAccess({ mode: [PadMode.TEE] }) ? 'TEE' : 'MPC'}
+          label="关联数据资源（可选）"
+          name="assetIds"
+          tooltip="可多选本节点数据目录中的源数据或抽样脱敏数据；源数据只能用于项目内可视和治理，不能直接进入沙箱"
         >
-          <Radio.Group>
-            <AccessWrapper
-              accessType={{
-                mode: [PadMode.MPC, PadMode['ALL-IN-ONE']],
-              }}
-            >
-              <Radio value={'MPC'}>
-                <Space>
-                  管道模式
-                  <Tooltip title="MPC、FL等多方模式">
-                    <QuestionCircleOutlined style={{ marginRight: '48px' }} />
-                  </Tooltip>
-                </Space>
-              </Radio>
-            </AccessWrapper>
-            <AccessWrapper
-              accessType={{
-                mode: [PadMode.TEE, PadMode['ALL-IN-ONE']],
-              }}
-            >
-              <Radio value={'TEE'}>
-                <Space>
-                  枢纽模式
-                  <Tooltip title="TEE等集中式方案">
-                    <QuestionCircleOutlined />
-                  </Tooltip>
-                </Space>
-              </Radio>
-            </AccessWrapper>
-          </Radio.Group>
+          <Select
+            mode="multiple"
+            showSearch
+            optionFilterProp="label"
+            placeholder="从数据目录选择"
+            options={viewInstance.assetListOptions}
+          />
         </Form.Item>
         <Form.Item label="节点信息" className={styles.formBoldLabelItem} required>
           <div>

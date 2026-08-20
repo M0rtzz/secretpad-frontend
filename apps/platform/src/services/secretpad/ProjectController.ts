@@ -184,14 +184,41 @@ export async function getProject(
   body?: API.GetProjectRequest,
   options?: { [key: string]: any },
 ) {
-  return request<API.SecretPadResponse_ProjectVO_>('/api/v1alpha1/project/get', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const result = await request<API.SecretPadResponse_ProjectVO_>(
+    '/api/v1alpha1/project/get',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      data: body,
+      ...(options || {}),
     },
-    data: body,
-    ...(options || {}),
-  });
+  );
+
+  // 数据计算画布只能消费当前沙箱审批通过且已就绪的抽样脱敏数据。
+  // 在项目详情这一统一入口过滤，可同时覆盖数据树、组件配置和快捷配置。
+  const sandboxId = new URLSearchParams(window.location.search).get('sandboxId');
+  if (window.location.pathname === '/dag' && sandboxId && result.data?.nodes) {
+    const context = await request<any>('/api/v1alpha1/data-compute/context', {
+      method: 'GET',
+      params: { sandboxId },
+    });
+    const allowed = new Set(
+      (context?.data?.mounts || [])
+        .filter((mount: any) => mount.status === 'READY')
+        .map((mount: any) => `${mount.processor_node_id}:${mount.datatable_id}`),
+    );
+    result.data.nodes = result.data.nodes
+      .map((node: any) => ({
+        ...node,
+        datatables: (node.datatables || []).filter((table: any) =>
+          allowed.has(`${node.nodeId}:${table.datatableId}`),
+        ),
+      }))
+      .filter((node: any) => node.datatables.length > 0);
+  }
+  return result;
 }
 
 /** project_graph_node outputs fix derived fields for chexian

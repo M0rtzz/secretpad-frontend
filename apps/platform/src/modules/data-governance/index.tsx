@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   DataGovernanceApi,
+  DataAssetApi,
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
@@ -81,6 +82,7 @@ export const DataGovernanceComponent = () => {
   const [taskForm] = Form.useForm();
   const taskMode = Form.useWatch('execMode', taskForm);
   const [preview, setPreview] = useState<DataSandboxRecord>();
+  const [sourceAssets, setSourceAssets] = useState<DataSandboxRecord[]>([]);
 
   /* ------------------------------- 详情 / 结果 ------------------------------- */
   const [detailItem, setDetailItem] = useState<DataSandboxRecord>();
@@ -145,6 +147,16 @@ export const DataGovernanceComponent = () => {
   useEffect(() => {
     refreshTasks();
   }, [refreshTasks]);
+
+  useEffect(() => {
+    DataAssetApi.catalog({}).then((response) =>
+      setSourceAssets(
+        responseData(response, []).filter(
+          (asset: DataSandboxRecord) => asset.data_stage === 'RAW',
+        ),
+      ),
+    );
+  }, []);
 
   useEffect(() => {
     if (resultsOpen) {
@@ -388,7 +400,7 @@ export const DataGovernanceComponent = () => {
 
   return (
     <MvpPage
-      title="数据治理"
+      title="数据抽样与脱敏"
       description="抽样与脱敏策略、任务执行（内置引擎/自定义代码）、结果数据集、血缘与源数据预览"
       extra={
         <RefreshButton
@@ -724,7 +736,7 @@ export const DataGovernanceComponent = () => {
 
       {/* 任务 提交 */}
       <Modal
-        title="提交治理任务"
+        title="提交数据抽样与脱敏任务"
         open={taskOpen}
         width={760}
         onCancel={() => setTaskOpen(false)}
@@ -763,19 +775,37 @@ export const DataGovernanceComponent = () => {
               }))}
             />
           </Form.Item>
+          <Form.Item
+            name="sourceAssetId"
+            label="源数据"
+            rules={[{ required: true, message: '请从数据目录选择源数据' }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="从数据目录选择源数据"
+              onChange={(assetId) => {
+                const asset = sourceAssets.find((item) => item.id === assetId);
+                taskForm.setFieldsValue({
+                  nodeId: asset?.provider_node_id,
+                  datatableId: asset?.datatable_id || asset?.id,
+                });
+              }}
+              options={sourceAssets.map((asset) => ({
+                value: asset.id,
+                label: `${asset.name}（${asset.provider_node_id}）`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="nodeId" hidden rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="datatableId" hidden rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
           <Space size="large" wrap style={{ width: '100%' }}>
-            <Form.Item name="nodeId" label="源节点" rules={[{ required: true }]}>
-              <Input placeholder="例如 alice" style={{ width: 180 }} />
-            </Form.Item>
-            <Form.Item
-              name="datatableId"
-              label="源数据表 ID"
-              rules={[{ required: true }]}
-            >
-              <Input placeholder="数据表 ID" style={{ width: 200 }} />
-            </Form.Item>
             <Form.Item name="name" label="任务名称">
-              <Input placeholder="默认：治理任务-<id>" style={{ width: 220 }} />
+              <Input placeholder="默认：抽样脱敏任务-<id>" style={{ width: 220 }} />
             </Form.Item>
           </Space>
           <Form.Item label="源数据预览">

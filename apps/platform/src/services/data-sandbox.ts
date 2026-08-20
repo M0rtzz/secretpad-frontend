@@ -177,6 +177,68 @@ export const DataSandboxApi = {
   },
 };
 
+// Unified data asset catalog and usage-control workflow.
+const assetBase = '/api/v1alpha1/data-assets';
+const assetGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${assetBase}${path}`, { method: 'GET', params });
+const assetPost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${assetBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+export const DataAssetApi = {
+  catalog: (params?: DataSandboxRecord) =>
+    assetGet<DataSandboxRecord[]>('/catalog', params),
+  detail: (id: string) => assetGet<DataSandboxRecord>('/detail', { id }),
+  preview: (id: string, limit = 5) =>
+    assetGet<DataSandboxRecord>('/preview', { id, limit }),
+  deleteAsset: (id: string) => assetPost('/delete', { id }),
+  projectAssets: (projectId: string) =>
+    assetGet<DataSandboxRecord[]>('/projects/catalog', { projectId }),
+  attachProjectAssets: (data: DataSandboxRecord) =>
+    assetPost<DataSandboxRecord[]>('/projects/attach', data),
+  createApiSnapshot: (data: DataSandboxRecord) =>
+    assetPost<DataSandboxRecord>('/api-snapshots', data),
+  sandboxMounts: (sandboxId: string) =>
+    assetGet<DataSandboxRecord[]>('/sandboxes/mounts', { sandboxId }),
+  usageRequests: (params?: DataSandboxRecord) =>
+    assetGet<DataSandboxRecord[]>('/usage-controls/requests', params),
+  saveUsageControl: (data: DataSandboxRecord) =>
+    assetPost<DataSandboxRecord>('/usage-controls/save', data),
+  reviewUsageControl: (data: DataSandboxRecord) =>
+    assetPost<DataSandboxRecord>('/usage-controls/review', data),
+};
+
+const computeBase = '/api/v1alpha1/data-compute';
+const computeGet = <T>(path: string, params?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${computeBase}${path}`, { method: 'GET', params });
+const computePost = <T>(path: string, data?: Record<string, any>) =>
+  request<DataSandboxResponse<T>>(`${computeBase}${path}`, {
+    method: 'POST',
+    data: data || {},
+  });
+
+export const DataComputeApi = {
+  overview: () => computeGet<DataSandboxRecord[]>('/overview'),
+  context: (sandboxId: string) =>
+    computeGet<DataSandboxRecord>('/context', { sandboxId }),
+  mountRequests: (status = '') =>
+    computeGet<DataSandboxRecord[]>('/mount-requests', { status }),
+  requestMount: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/mount-requests', data),
+  components: (sandboxId: string) =>
+    computeGet<DataSandboxRecord[]>('/components', { sandboxId }),
+  publishComponent: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/components/publish', data),
+  canvases: (sandboxId: string) =>
+    computeGet<DataSandboxRecord[]>('/canvases', { sandboxId }),
+  saveCanvas: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/canvases/save', data),
+  reports: (sandboxId: string, type = '') =>
+    computeGet<DataSandboxRecord[]>('/reports', { sandboxId, type }),
+};
+
 // Z-04 数据治理（抽样/脱敏）：独立前缀 /api/v1alpha1/data-governance
 const governanceBase = '/api/v1alpha1/data-governance';
 
@@ -229,13 +291,23 @@ export const DataGovernanceApi = {
 // Z-05 数据开发（JAR/SQL/Python 计算任务）：独立前缀 /api/v1alpha1/data-dev
 const devBase = '/api/v1alpha1/data-dev';
 
+const dataComputeScope = () => {
+  const query = new URLSearchParams(window.location.search);
+  const projectId = query.get('projectId') || '';
+  const sandboxId = query.get('sandboxId') || '';
+  return { ...(projectId ? { projectId } : {}), ...(sandboxId ? { sandboxId } : {}) };
+};
+
 const devGet = <T>(path: string, params?: Record<string, any>) =>
-  request<DataSandboxResponse<T>>(`${devBase}${path}`, { method: 'GET', params });
+  request<DataSandboxResponse<T>>(`${devBase}${path}`, {
+    method: 'GET',
+    params: { ...dataComputeScope(), ...(params || {}) },
+  });
 
 const devPost = <T>(path: string, data?: Record<string, any>) =>
   request<DataSandboxResponse<T>>(`${devBase}${path}`, {
     method: 'POST',
-    data: data || {},
+    data: { ...dataComputeScope(), ...(data || {}) },
   });
 
 const devUpload = <T>(
@@ -329,12 +401,15 @@ const modelBase = '/api/v1alpha1/models';
 const modelApiBase = '/api/v1alpha1/model-api';
 
 const modelGet = <T>(path: string, params?: Record<string, any>) =>
-  request<DataSandboxResponse<T>>(`${modelBase}${path}`, { method: 'GET', params });
+  request<DataSandboxResponse<T>>(`${modelBase}${path}`, {
+    method: 'GET',
+    params: { ...dataComputeScope(), ...(params || {}) },
+  });
 
 const modelPost = <T>(path: string, data?: Record<string, any>) =>
   request<DataSandboxResponse<T>>(`${modelBase}${path}`, {
     method: 'POST',
-    data: data || {},
+    data: { ...dataComputeScope(), ...(data || {}) },
   });
 
 const modelApiGet = <T>(path: string, params?: Record<string, any>) =>

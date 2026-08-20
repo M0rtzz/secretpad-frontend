@@ -3,12 +3,12 @@ import {
   Drawer,
   Form,
   Input,
-  InputNumber,
   message,
   Modal,
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Timeline,
   Tooltip,
@@ -26,6 +26,8 @@ const typeLabels: Record<string, string> = {
   CREATE: '创建',
   RENEW: '续期',
   SPEC_CHANGE: '规格变更',
+  DATA_CHANGE: '数据挂载变更',
+  CONFIG_CHANGE: '配置变更',
   RECYCLE: '回收',
 };
 
@@ -37,8 +39,7 @@ const typeColors: Record<string, string> = {
 };
 
 const statusLabels: Record<string, string> = {
-  DATA_PROVIDER_REVIEW: '待供数方审核',
-  OPERATOR_REVIEW: '待运营方审核',
+  DATA_PROVIDER_REVIEW: '待项目节点一致审核',
   APPROVED: '已批准',
   EXECUTING: '执行中',
   COMPLETED: '已完成',
@@ -58,24 +59,21 @@ const statusColors: Record<string, string> = {
   CANCELLED: 'default',
 };
 
-const REVIEWABLE = ['DATA_PROVIDER_REVIEW', 'OPERATOR_REVIEW'];
-const CANCELLABLE = ['DATA_PROVIDER_REVIEW', 'OPERATOR_REVIEW', 'APPROVED'];
+const REVIEWABLE = ['DATA_PROVIDER_REVIEW'];
+const CANCELLABLE = ['DATA_PROVIDER_REVIEW', 'APPROVED'];
 
 export const SandboxApprovalComponent = () => {
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
-  const [images, setImages] = useState<DataSandboxRecord[]>([]);
-  const [sandboxes, setSandboxes] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
   const [keyword, setKeyword] = useState('');
-  const [submitOpen, setSubmitOpen] = useState(false);
+  const [view, setView] = useState('mine');
   const [reviewItem, setReviewItem] = useState<DataSandboxRecord>();
   const [history, setHistory] = useState<DataSandboxRecord[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [form] = Form.useForm();
+  const [detail, setDetail] = useState<DataSandboxRecord>();
   const [reviewForm] = Form.useForm();
-  const approvalType = Form.useWatch('approvalType', form);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -93,15 +91,6 @@ export const SandboxApprovalComponent = () => {
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    DataSandboxApi.images().then((res) => setImages(responseData(res, [])));
-    DataSandboxApi.sandboxes({}).then((res) =>
-      setSandboxes(
-        responseData(res, []).filter((s: DataSandboxRecord) => s.deleted === 0),
-      ),
-    );
-  }, []);
 
   const review = async (values: DataSandboxRecord) => {
     if (!reviewItem) return;
@@ -129,24 +118,20 @@ export const SandboxApprovalComponent = () => {
     }
   };
 
-  const openSubmit = () => {
-    form.resetFields();
-    setSubmitOpen(true);
-  };
-
   return (
     <MvpPage
-      title="沙箱申请审批"
-      description="创建、续期、规格变更与回收的申请单提交，供数方/运营方两级审核、驳回复审、失败重试与审批记录"
-      extra={
-        <>
-          <RefreshButton loading={loading} onClick={refresh} />
-          <Button type="primary" onClick={openSubmit}>
-            提交申请
-          </Button>
-        </>
-      }
+      title="沙箱资源审核"
+      description="查看我的申请进度，并审核其他项目节点提交的沙箱资源申请"
+      extra={<RefreshButton loading={loading} onClick={refresh} />}
     >
+      <Tabs
+        activeKey={view}
+        onChange={setView}
+        items={[
+          { key: 'mine', label: '我的申请' },
+          { key: 'review', label: '待我审核' },
+        ]}
+      />
       <Space style={{ marginBottom: 16 }}>
         <Select
           value={status}
@@ -176,7 +161,11 @@ export const SandboxApprovalComponent = () => {
       <Table
         rowKey="id"
         loading={loading}
-        dataSource={items}
+        dataSource={items.filter((item) =>
+          view === 'mine'
+            ? item.direction !== 'INCOMING'
+            : item.direction === 'INCOMING',
+        )}
         scroll={{ x: 1100 }}
         columns={[
           {
@@ -199,6 +188,7 @@ export const SandboxApprovalComponent = () => {
             render: (v: string) => (v ? v : '-'),
           },
           { title: '所属方', dataIndex: 'owner_id' },
+          { title: '所属项目', dataIndex: 'project_id' },
           { title: '提交人', dataIndex: 'submitter' },
           {
             title: '状态',
@@ -220,7 +210,7 @@ export const SandboxApprovalComponent = () => {
             width: 240,
             render: (_: unknown, row: DataSandboxRecord) => (
               <Space wrap>
-                {REVIEWABLE.includes(row.status) && (
+                {view === 'review' && REVIEWABLE.includes(row.status) && (
                   <Button
                     type="link"
                     onClick={() => {
@@ -231,17 +221,17 @@ export const SandboxApprovalComponent = () => {
                     审批
                   </Button>
                 )}
-                {row.status === 'REJECTED' && (
+                {view === 'mine' && row.status === 'REJECTED' && (
                   <Button type="link" onClick={() => directAction(row, 'RESUBMIT')}>
                     提交复审
                   </Button>
                 )}
-                {row.status === 'FAILED' && (
+                {view === 'mine' && row.status === 'FAILED' && (
                   <Button type="link" onClick={() => directAction(row, 'RETRY')}>
                     重试
                   </Button>
                 )}
-                {CANCELLABLE.includes(row.status) && (
+                {view === 'mine' && CANCELLABLE.includes(row.status) && (
                   <Button type="link" onClick={() => directAction(row, 'CANCEL')}>
                     撤回
                   </Button>
@@ -257,119 +247,21 @@ export const SandboxApprovalComponent = () => {
                 >
                   审批记录
                 </Button>
+                <Button
+                  type="link"
+                  onClick={async () =>
+                    setDetail(
+                      responseData(await DataSandboxApi.approvalDetail(row.id), {}),
+                    )
+                  }
+                >
+                  详细信息
+                </Button>
               </Space>
             ),
           },
         ]}
       />
-
-      <Modal
-        title="提交沙箱资源申请"
-        open={submitOpen}
-        width={680}
-        onCancel={() => setSubmitOpen(false)}
-        onOk={() => form.submit()}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{
-            approvalType: 'CREATE',
-            validDays: 7,
-            networkPolicy: 'INTERNAL_ONLY',
-          }}
-          onFinish={async (values) => {
-            try {
-              responseData(await DataSandboxApi.approvalSubmit(values), {});
-              message.success('申请已提交，等待审批');
-              setSubmitOpen(false);
-              form.resetFields();
-              refresh();
-            } catch (error: any) {
-              message.error(error.message || '提交失败');
-            }
-          }}
-        >
-          <Form.Item name="approvalType" label="申请类型" rules={[{ required: true }]}>
-            <Select
-              options={Object.entries(typeLabels).map(([value, label]) => ({
-                value,
-                label,
-              }))}
-            />
-          </Form.Item>
-          {approvalType && approvalType !== 'CREATE' && (
-            <Form.Item name="sandboxId" label="目标沙箱" rules={[{ required: true }]}>
-              <Select
-                showSearch
-                optionFilterProp="label"
-                options={sandboxes.map((s) => ({
-                  value: s.id,
-                  label: `${s.name} (${s.id})`,
-                }))}
-              />
-            </Form.Item>
-          )}
-          {(!approvalType || approvalType === 'CREATE') && (
-            <>
-              <Form.Item name="name" label="沙箱名称" rules={[{ required: true }]}>
-                <Input placeholder="例如：客户流失分析环境" />
-              </Form.Item>
-              <Form.Item name="imageId" label="环境镜像" rules={[{ required: true }]}>
-                <Select
-                  options={images
-                    .filter((item) => item.enabled)
-                    .map((item) => ({
-                      value: item.id,
-                      label: `${item.name} (${item.image_ref})`,
-                    }))}
-                />
-              </Form.Item>
-              <Space size="large" wrap>
-                <Form.Item name="cpuCores" label="CPU（核）">
-                  <InputNumber min={0.1} />
-                </Form.Item>
-                <Form.Item name="memoryGb" label="内存（GB）">
-                  <InputNumber min={1} />
-                </Form.Item>
-                <Form.Item name="gpuCount" label="GPU">
-                  <InputNumber min={0} max={4} />
-                </Form.Item>
-                <Form.Item name="storageGb" label="存储（GB）">
-                  <InputNumber min={1} />
-                </Form.Item>
-                <Form.Item name="validDays" label="有效期（天）">
-                  <InputNumber min={1} max={365} />
-                </Form.Item>
-              </Space>
-            </>
-          )}
-          {approvalType === 'RENEW' && (
-            <Form.Item name="days" label="续期天数" rules={[{ required: true }]}>
-              <InputNumber min={1} max={365} />
-            </Form.Item>
-          )}
-          {approvalType === 'SPEC_CHANGE' && (
-            <Space size="large" wrap>
-              <Form.Item name="cpuCores" label="新 CPU（核）">
-                <InputNumber min={0.1} />
-              </Form.Item>
-              <Form.Item name="memoryGb" label="新内存（GB）">
-                <InputNumber min={1} />
-              </Form.Item>
-              <Form.Item name="gpuCount" label="新 GPU">
-                <InputNumber min={0} max={4} />
-              </Form.Item>
-              <Form.Item name="storageGb" label="新存储（GB）">
-                <InputNumber min={1} />
-              </Form.Item>
-            </Space>
-          )}
-          <Form.Item name="reason" label="申请原因">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       <Modal
         title={`审批：${reviewItem?.id || ''}（${
@@ -385,10 +277,7 @@ export const SandboxApprovalComponent = () => {
               options={[
                 {
                   value: 'APPROVE',
-                  label:
-                    reviewItem?.status === 'DATA_PROVIDER_REVIEW'
-                      ? '供数方审核通过，进入运营方审核'
-                      : '运营方审核通过，自动执行',
+                  label: '本节点审核通过',
                 },
                 { value: 'REJECT', label: '驳回' },
               ]}
@@ -424,6 +313,39 @@ export const SandboxApprovalComponent = () => {
             ),
           }))}
         />
+      </Drawer>
+      <Drawer
+        title="申请详细信息"
+        width={680}
+        open={!!detail}
+        onClose={() => setDetail(undefined)}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <div>申请单：{detail?.id}</div>
+          <div>沙箱：{detail?.sandbox_id || '待创建'}</div>
+          <div>所属节点 ID：{detail?.applicant_node_id || detail?.owner_id}</div>
+          <div>所属项目：{detail?.project_id}</div>
+          <div>提交人：{detail?.submitter}</div>
+          <div>项目节点投票：</div>
+          <Table
+            size="small"
+            pagination={false}
+            rowKey="voter_node_id"
+            dataSource={detail?.votes || []}
+            columns={[
+              { title: '节点', dataIndex: 'voter_node_id' },
+              {
+                title: '状态',
+                dataIndex: 'status',
+                render: (v: string) => <Tag>{v}</Tag>,
+              },
+              { title: '审核人', dataIndex: 'voter' },
+              { title: '意见', dataIndex: 'comment' },
+            ]}
+          />
+          <div>申请参数：</div>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>{detail?.payload_json}</pre>
+        </Space>
       </Drawer>
     </MvpPage>
   );

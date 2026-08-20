@@ -75,13 +75,21 @@ export const DagLayout = () => {
   const loginService = useModel(LoginService);
   const slsLogService = useModel(SlsService);
 
-  const { type = 'DAG', mode, projectId } = parse(window.location.search);
+  const { type = 'DAG', mode, projectId, sandboxId } = parse(window.location.search);
   const goBack = async () => {
     viewInstance.setInitActiveMenu(DagLayoutMenu.MODELTRAIN);
     const userInfo = await loginService.getUserInfo();
     if (userInfo.platformType === Platform.AUTONOMY) {
       const { origin } = (history.location.state as { origin: string }) || {};
-      history.push(`/edge?ownerId=${userInfo.ownerId}&tab=${origin || 'my-project'}`);
+      const target = new URLSearchParams({
+        ownerId: userInfo.ownerId || '',
+        tab: origin || 'my-project',
+      });
+      if (origin === 'data-compute-visual' && projectId && sandboxId) {
+        target.set('projectId', String(projectId));
+        target.set('sandboxId', String(sandboxId));
+      }
+      history.push(`/edge?${target.toString()}`);
     } else {
       history.push('/home?tab=project-management');
       viewInstance.setInitActiveMenu('');

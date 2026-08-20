@@ -18,13 +18,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'umi';
 
 import {
+  DataAssetApi,
   DataSandboxApi,
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
+import API from '@/services/secretpad';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
 import { LoginService } from '@/modules/login/login.service';
 import { useModel } from '@/util/valtio-helper';
+import { checkAllApproved } from '@/modules/p2p-project-list/components/common';
 
 const statusColors: Record<string, string> = {
   RUNNING: 'success',
@@ -36,12 +39,19 @@ const statusColors: Record<string, string> = {
   DESTROYED: 'default',
 };
 
+const formatError = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
 export const SandboxManagerComponent = () => {
   const { search } = useLocation();
   const ownerId = String(parse(search).ownerId || '');
   const loginService = useModel(LoginService);
+  const currentUser = loginService?.userInfo as DataSandboxRecord | undefined;
+  const currentNodeId = String(currentUser?.platformNodeId || ownerId);
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
   const [images, setImages] = useState<DataSandboxRecord[]>([]);
+  const [projects, setProjects] = useState<DataSandboxRecord[]>([]);
+  const [createAssets, setCreateAssets] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -51,9 +61,15 @@ export const SandboxManagerComponent = () => {
   const [allowlistItems, setAllowlistItems] = useState<DataSandboxRecord[]>([]);
   const [allowlistLoading, setAllowlistLoading] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
+  const [changeItem, setChangeItem] = useState<DataSandboxRecord>();
+  const [changeType, setChangeType] = useState('');
+  const [changeAssets, setChangeAssets] = useState<DataSandboxRecord[]>([]);
+  const [mounts, setMounts] = useState<DataSandboxRecord[]>([]);
+  const [mountsOpen, setMountsOpen] = useState(false);
   const [form] = Form.useForm();
   const [imageForm] = Form.useForm();
   const [allowlistForm] = Form.useForm();
+  const [changeForm] = Form.useForm();
   // 门禁直通角色：平台管理员（与后端 SandboxApprovalGate.isAdmin 一致）
   const isAdmin =
     loginService?.userInfo?.ownerId === 'kuscia-system' &&
@@ -81,12 +97,14 @@ export const SandboxManagerComponent = () => {
     setLoading(true);
     setError('');
     try {
-      const [sandboxResponse, imageResponse] = await Promise.all([
+      const [sandboxResponse, imageResponse, projectResponse] = await Promise.all([
         DataSandboxApi.sandboxes({ ownerId }),
         DataSandboxApi.images(),
+        API.P2PProjectController.listP2PProject(),
       ]);
       setItems(responseData(sandboxResponse, []));
       setImages(responseData(imageResponse, []));
+      setProjects(responseData(projectResponse, []));
     } catch (requestError: unknown) {
       const detail = formatError(requestError, '加载沙箱失败');
       setError(detail);
@@ -176,6 +194,58 @@ export const SandboxManagerComponent = () => {
     }
   };
 
+  const openChange = async (record: DataSandboxRecord, type: string) => {
+    setChangeItem(record);
+    setChangeType(type);
+    changeForm.resetFields();
+    if (type === 'SPEC_CHANGE')
+      changeForm.setFieldsValue({
+        cpuCores: record.cpu_cores,
+        memoryGb: record.memory_gb,
+        gpuCount: record.gpu_count,
+        storageGb: record.storage_gb,
+      });
+    if (type === 'CONFIG_CHANGE')
+      changeForm.setFieldsValue({
+        imageId: record.image_id,
+        networkPolicy: record.network_policy,
+      });
+    if (type === 'DATA_CHANGE') {
+      const [projectData, currentMounts] = await Promise.all([
+        DataAssetApi.projectAssets(record.project_id),
+        DataAssetApi.sandboxMounts(record.id),
+      ]);
+      setChangeAssets(
+        responseData(projectData, []).filter(
+          (asset: DataSandboxRecord) => asset.data_stage === 'PROCESSED',
+        ),
+      );
+      changeForm.setFieldsValue({
+        datasetAssetIds: responseData(currentMounts, []).map(
+          (mount: DataSandboxRecord) => mount.asset_id,
+        ),
+      });
+    }
+  };
+
+  const submitChange = async (values: DataSandboxRecord) => {
+    if (!changeItem) return;
+    try {
+      responseData(
+        await DataSandboxApi.approvalSubmit({
+          approvalType: changeType,
+          sandboxId: changeItem.id,
+          ...values,
+        }),
+        {},
+      );
+      message.success('变更申请已提交');
+      setChangeItem(undefined);
+    } catch (error: any) {
+      message.error(error.message || '提交变更申请失败');
+    }
+  };
+
   const columns = [
     {
       title: '沙箱',
@@ -243,60 +313,133 @@ export const SandboxManagerComponent = () => {
       width: 300,
       render: (_: unknown, record: DataSandboxRecord) => (
         <Space wrap>
-          {record.status !== 'RUNNING' ? (
-            <Button size="small" type="link" onClick={() => action(record.id, 'START')}>
-              启动
-            </Button>
-          ) : (
-            <Button size="small" type="link" onClick={() => action(record.id, 'STOP')}>
-              停止
-            </Button>
-          )}
-          {record.status === 'RUNNING' &&
-          record.endpoint &&
-          record.network_policy !== 'NO_NETWORK' ? (
-            <Button
-              size="small"
-              type="link"
-              onClick={() => openDevEndpoint(record)}
-              style={{ color: '#1890ff' }}
-            >
-              打开开发环境
-            </Button>
-          ) : null}
-          {record.network_policy === 'ALLOW_LIST' ? (
-            <Button size="small" type="link" onClick={() => openAllowlist(record.id)}>
-              白名单
-            </Button>
-          ) : null}
-          <Button
-            size="small"
-            type="link"
-            onClick={() =>
-              gated()
-                ? guideToApproval('续期沙箱')
-                : action(record.id, 'RENEW', { days: 7 })
-            }
-          >
-            续期7天
-          </Button>
-          <Button
-            size="small"
-            type="link"
-            onClick={() => action(record.id, 'SNAPSHOT')}
-          >
-            快照
-          </Button>
-          <Popconfirm
-            title="销毁后将回收全部配额，确定继续？"
-            onConfirm={() =>
-              gated() ? guideToApproval('回收沙箱') : action(record.id, 'DESTROY')
-            }
-          >
-            <Button danger size="small" type="link">
-              销毁
-            </Button>
-          </Popconfirm>
+          {(() => {
+            const creator = record.created_by === loginService?.userInfo?.name;
+            return (
+              <>
+                {record.status !== 'RUNNING' ? (
+                  <Button
+                    disabled={!creator}
+                    size="small"
+                    type="link"
+                    onClick={() => action(record.id, 'START')}
+                  >
+                    启动
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={!creator}
+                    size="small"
+                    type="link"
+                    onClick={() => action(record.id, 'STOP')}
+                  >
+                    停止
+                  </Button>
+                )}
+                {record.status === 'RUNNING' &&
+                record.endpoint &&
+                record.network_policy !== 'NO_NETWORK' ? (
+                  <Button
+                    size="small"
+                    type="link"
+                    disabled={!creator}
+                    onClick={() => openDevEndpoint(record)}
+                    style={{ color: '#1890ff' }}
+                  >
+                    打开开发环境
+                  </Button>
+                ) : null}
+                {record.network_policy === 'ALLOW_LIST' ? (
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => openAllowlist(record.id)}
+                  >
+                    白名单
+                  </Button>
+                ) : null}
+                <Button
+                  size="small"
+                  type="link"
+                  disabled={!creator}
+                  onClick={async () => {
+                    responseData(
+                      await DataSandboxApi.approvalSubmit({
+                        approvalType: 'RENEW',
+                        sandboxId: record.id,
+                        days: 7,
+                      }),
+                      {},
+                    );
+                    message.success('续期申请已提交');
+                  }}
+                >
+                  续期7天
+                </Button>
+                <Button
+                  disabled={!creator}
+                  size="small"
+                  type="link"
+                  onClick={() => openChange(record, 'SPEC_CHANGE')}
+                >
+                  变更规格
+                </Button>
+                <Button
+                  disabled={!creator}
+                  size="small"
+                  type="link"
+                  onClick={() => openChange(record, 'DATA_CHANGE')}
+                >
+                  变更数据
+                </Button>
+                <Button
+                  disabled={!creator}
+                  size="small"
+                  type="link"
+                  onClick={() => openChange(record, 'CONFIG_CHANGE')}
+                >
+                  变更配置
+                </Button>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={async () => {
+                    setMounts(
+                      responseData(await DataAssetApi.sandboxMounts(record.id), []),
+                    );
+                    setMountsOpen(true);
+                  }}
+                >
+                  挂载数据
+                </Button>
+                <Button
+                  size="small"
+                  type="link"
+                  disabled={!creator}
+                  onClick={() => action(record.id, 'SNAPSHOT')}
+                >
+                  快照
+                </Button>
+                <Popconfirm
+                  title="销毁后将回收全部配额，确定继续？"
+                  onConfirm={async () => {
+                    responseData(
+                      await DataSandboxApi.approvalSubmit({
+                        approvalType: 'RECYCLE',
+                        sandboxId: record.id,
+                      }),
+                      {},
+                    );
+                    message.success('回收申请已提交');
+                  }}
+                >
+                  <Button disabled={!creator} danger size="small" type="link">
+                    销毁
+                  </Button>
+                </Popconfirm>
+              </>
+            );
+          })()}
         </Space>
       ),
     },
@@ -304,8 +447,8 @@ export const SandboxManagerComponent = () => {
 
   return (
     <MvpPage
-      title="沙箱管理"
-      description="环境镜像、生命周期、期限、网络策略、配额和状态监控"
+      title="沙箱资源申请"
+      description="按项目申请沙箱，并统一提交延期、规格、配置、数据挂载与销毁申请"
       error={error}
       onRetry={refresh}
       extra={
@@ -314,11 +457,12 @@ export const SandboxManagerComponent = () => {
           <Button onClick={() => setImageOpen(true)}>环境镜像</Button>
           <Button
             type="primary"
-            onClick={() =>
-              gated() ? guideToApproval('创建沙箱') : setCreateOpen(true)
-            }
+            onClick={() => {
+              form.setFieldValue('ownerId', currentNodeId);
+              setCreateOpen(true);
+            }}
           >
-            {gated() ? '申请沙箱' : '创建沙箱'}
+            申请沙箱
           </Button>
         </>
       }
@@ -342,7 +486,7 @@ export const SandboxManagerComponent = () => {
           form={form}
           layout="vertical"
           initialValues={{
-            ownerId,
+            ownerId: currentNodeId,
             validDays: 7,
             networkPolicy: 'INTERNAL_ONLY',
             cpuCores: 2,
@@ -352,8 +496,14 @@ export const SandboxManagerComponent = () => {
           }}
           onFinish={async (values) => {
             try {
-              responseData(await DataSandboxApi.createSandbox(values), {});
-              message.success('沙箱创建成功');
+              responseData(
+                await DataSandboxApi.approvalSubmit({
+                  ...values,
+                  approvalType: 'CREATE',
+                }),
+                {},
+              );
+              message.success('沙箱申请已提交');
               setCreateOpen(false);
               form.resetFields();
               refresh();
@@ -365,8 +515,35 @@ export const SandboxManagerComponent = () => {
           <Form.Item name="name" label="沙箱名称" rules={[{ required: true }]}>
             <Input placeholder="例如：客户流失分析环境" />
           </Form.Item>
+          <Form.Item name="projectId" label="所属项目" rules={[{ required: true }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              onChange={async (projectId) => {
+                form.setFieldValue('datasetAssetIds', []);
+                setCreateAssets(
+                  responseData(await DataAssetApi.projectAssets(projectId), []).filter(
+                    (asset: DataSandboxRecord) => asset.data_stage === 'PROCESSED',
+                  ),
+                );
+              }}
+              options={projects
+                .filter((p) => checkAllApproved(p as API.ProjectVO))
+                .map((p) => ({ value: p.projectId, label: p.projectName }))}
+            />
+          </Form.Item>
+          <Form.Item name="datasetAssetIds" label="挂载数据">
+            <Select
+              mode="multiple"
+              placeholder="仅可选择项目内有效的抽样脱敏数据"
+              options={createAssets.map((a) => ({
+                value: a.id,
+                label: `${a.name}（${a.provider_node_id}）`,
+              }))}
+            />
+          </Form.Item>
           <Form.Item name="ownerId" label="所属节点" rules={[{ required: true }]}>
-            <Input />
+            <Input disabled />
           </Form.Item>
           <Form.Item name="imageId" label="环境镜像" rules={[{ required: true }]}>
             <Select
@@ -385,7 +562,7 @@ export const SandboxManagerComponent = () => {
             <Form.Item name="memoryGb" label="内存（GB）">
               <InputNumber min={1} />
             </Form.Item>
-            <Form.Item name="gpuCount" label="GPU（A100，仅申请记录）">
+            <Form.Item name="gpuCount" label="GPU（运行时配额）">
               <InputNumber min={0} max={4} />
             </Form.Item>
             <Form.Item name="storageGb" label="存储（GB）">
@@ -405,6 +582,95 @@ export const SandboxManagerComponent = () => {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={
+          {
+            SPEC_CHANGE: '申请规格变更',
+            DATA_CHANGE: '申请挂载数据变更',
+            CONFIG_CHANGE: '申请环境配置变更',
+          }[changeType]
+        }
+        open={!!changeItem}
+        onCancel={() => setChangeItem(undefined)}
+        onOk={() => changeForm.submit()}
+      >
+        <Form form={changeForm} layout="vertical" onFinish={submitChange}>
+          {changeType === 'SPEC_CHANGE' && (
+            <Space wrap>
+              <Form.Item name="cpuCores" label="CPU（核）">
+                <InputNumber min={0.1} />
+              </Form.Item>
+              <Form.Item name="memoryGb" label="内存（GB）">
+                <InputNumber min={1} />
+              </Form.Item>
+              <Form.Item name="gpuCount" label="GPU">
+                <InputNumber min={0} />
+              </Form.Item>
+              <Form.Item name="storageGb" label="存储（GB）">
+                <InputNumber min={1} />
+              </Form.Item>
+            </Space>
+          )}
+          {changeType === 'DATA_CHANGE' && (
+            <Form.Item name="datasetAssetIds" label="挂载数据">
+              <Select
+                mode="multiple"
+                options={changeAssets.map((asset) => ({
+                  value: asset.id,
+                  label: `${asset.name}（${asset.provider_node_id}）`,
+                }))}
+              />
+            </Form.Item>
+          )}
+          {changeType === 'CONFIG_CHANGE' && (
+            <>
+              <Form.Item name="imageId" label="环境镜像">
+                <Select
+                  options={images
+                    .filter((image) => image.enabled)
+                    .map((image) => ({ value: image.id, label: image.name }))}
+                />
+              </Form.Item>
+              <Form.Item name="networkPolicy" label="网络策略">
+                <Select
+                  options={[
+                    { value: 'INTERNAL_ONLY', label: '仅平台内网' },
+                    { value: 'ALLOW_LIST', label: '出口白名单' },
+                    { value: 'NO_NETWORK', label: '完全断网' },
+                  ]}
+                />
+              </Form.Item>
+            </>
+          )}
+          <Form.Item name="reason" label="申请原因">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        title="沙箱挂载数据"
+        open={mountsOpen}
+        width={850}
+        footer={null}
+        onCancel={() => setMountsOpen(false)}
+      >
+        <Table
+          rowKey="id"
+          dataSource={mounts}
+          columns={[
+            { title: '数据', dataIndex: 'asset_name' },
+            { title: '提供方', dataIndex: 'provider_node_id' },
+            { title: '挂载路径', dataIndex: 'mount_path' },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              render: (v: string) => <Tag>{v}</Tag>,
+            },
+            { title: '有效期', dataIndex: 'expires_at', render: formatTime },
+          ]}
+        />
       </Modal>
 
       <Modal
