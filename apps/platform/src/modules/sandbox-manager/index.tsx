@@ -66,6 +66,7 @@ export const SandboxManagerComponent = () => {
   const [changeAssets, setChangeAssets] = useState<DataSandboxRecord[]>([]);
   const [mounts, setMounts] = useState<DataSandboxRecord[]>([]);
   const [mountsOpen, setMountsOpen] = useState(false);
+  const [recyclingId, setRecyclingId] = useState('');
   const [form] = Form.useForm();
   const [imageForm] = Form.useForm();
   const [allowlistForm] = Form.useForm();
@@ -246,6 +247,25 @@ export const SandboxManagerComponent = () => {
     }
   };
 
+  const submitRecycle = async (record: DataSandboxRecord) => {
+    setRecyclingId(record.id);
+    try {
+      responseData(
+        await DataSandboxApi.approvalSubmit({
+          approvalType: 'RECYCLE',
+          sandboxId: record.id,
+        }),
+        {},
+      );
+      message.success('销毁申请已提交，请到“沙箱资源审核”查看审批进度');
+      await refresh();
+    } catch (error: unknown) {
+      message.error(formatError(error, '销毁申请提交失败'));
+    } finally {
+      setRecyclingId('');
+    }
+  };
+
   const columns = [
     {
       title: '沙箱',
@@ -422,18 +442,17 @@ export const SandboxManagerComponent = () => {
                 </Button>
                 <Popconfirm
                   title="销毁后将回收全部配额，确定继续？"
-                  onConfirm={async () => {
-                    responseData(
-                      await DataSandboxApi.approvalSubmit({
-                        approvalType: 'RECYCLE',
-                        sandboxId: record.id,
-                      }),
-                      {},
-                    );
-                    message.success('回收申请已提交');
-                  }}
+                  okText="确定销毁"
+                  cancelText="取消"
+                  onConfirm={() => submitRecycle(record)}
                 >
-                  <Button disabled={!creator} danger size="small" type="link">
+                  <Button
+                    disabled={!creator || Boolean(recyclingId)}
+                    loading={recyclingId === record.id}
+                    danger
+                    size="small"
+                    type="link"
+                  >
                     销毁
                   </Button>
                 </Popconfirm>
