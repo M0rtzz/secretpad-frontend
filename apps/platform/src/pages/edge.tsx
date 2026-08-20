@@ -7,6 +7,7 @@ import {
   FileSearchOutlined,
   SafetyCertificateOutlined,
   ToolOutlined,
+  ExperimentOutlined as ModelingOutlined,
 } from '@ant-design/icons';
 import { parse } from 'query-string';
 import { lazy, useEffect } from 'react';
@@ -79,6 +80,11 @@ const OperationCenterComponent = lazy(() =>
     }),
   ),
 );
+const IntelligentModelingComponent = lazy(() =>
+  import('@/modules/intelligent-modeling').then(
+    ({ IntelligentModelingComponent: Component }) => ({ default: Component }),
+  ),
+);
 
 const menuItems: {
   label: string;
@@ -127,6 +133,12 @@ const menuItems: {
     icon: <ExperimentOutlined />,
     component: <SandboxManagerComponent />,
     key: 'sandbox-manager',
+  },
+  {
+    label: '智能建模',
+    icon: <ModelingOutlined />,
+    component: <IntelligentModelingComponent />,
+    key: 'intelligent-modeling',
   },
   {
     label: '沙箱申请审批',

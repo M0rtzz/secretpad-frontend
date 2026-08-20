@@ -15,9 +15,22 @@ import { DefaultComponentInterpreterService as ComponentInterpreterService } fro
 import type { Component, ComponentTreeItem, ComputeMode } from './component-protocol';
 
 export class DefaultComponentTreeService extends Model {
+  // Business-facing modeling names reuse the platform's proven definitions.
+  private static readonly COMPONENT_ALIASES: Record<string, string> = {
+    'intelligent_modeling/数据对齐': 'data_prep/psi',
+    'intelligent_modeling/逻辑回归': 'ml.train/ss_sgd_train',
+    'intelligent_modeling/线性回归': 'ml.train/ss_sgd_train',
+    'intelligent_modeling/异常值处理': 'preprocessing/fillna',
+    'intelligent_modeling/缺失值处理': 'preprocessing/fillna',
+    'intelligent_modeling/唯一值筛选': 'data_filter/feature_filter',
+    'intelligent_modeling/特征分箱': 'preprocessing/vert_binning',
+    'intelligent_modeling/标准化': 'preprocessing/feature_calculate',
+    'intelligent_modeling/相关系数': 'stats/ss_pearsonr',
+  };
   protected readonly onComponentDraggedEmitter = new Emitter<{
     component: Component;
     status: NodeStatus;
+    displayName?: string;
     e: React.MouseEvent<HTMLDivElement, MouseEvent>;
   }>();
 
@@ -107,22 +120,45 @@ export class DefaultComponentTreeService extends Model {
     mode: ComputeMode,
     e: React.MouseEvent<HTMLDivElement, MouseEvent>,
   ) {
+    const componentKey =
+      DefaultComponentTreeService.COMPONENT_ALIASES[`${node.category}/${node.title}`] ||
+      `${node.category}/${node.title}`;
+    const [componentDomain, componentName] = componentKey.split('/');
     const componentConfig = await this.getComponentConfig(
       {
-        name: node.title,
-        domain: node.category,
+        name: componentName,
+        domain: componentDomain,
       },
       mode,
     );
     const isConfigNeeded = this.componentConfigService.isConfigNeeded(
-      `${node.category}/${node.title}`,
+      componentKey,
       mode,
     );
 
-    componentConfig &&
+    let resolvedComponent = componentConfig;
+    if (componentConfig && node.title === '线性回归') {
+      resolvedComponent = {
+        ...componentConfig,
+        attrs: componentConfig.attrs.map((attr) =>
+          attr.name === 'reg_type' && 'atomic' in attr
+            ? {
+                ...attr,
+                atomic: { ...attr.atomic, default_value: { s: 'linear' } },
+              }
+            : attr,
+        ),
+      };
+    }
+    resolvedComponent &&
       this.onComponentDraggedEmitter.fire({
-        component: componentConfig,
+        component: resolvedComponent,
         status: isConfigNeeded ? NodeStatus.unfinished : NodeStatus.default,
+        displayName: DefaultComponentTreeService.COMPONENT_ALIASES[
+          `${node.category}/${node.title}`
+        ]
+          ? node.title
+          : undefined,
         e,
       });
   }
@@ -177,7 +213,47 @@ export class DefaultComponentTreeService extends Model {
       [],
     );
 
+    if (mode === 'MPC') {
+      const aliases = [
+        { title: '数据对齐', domain: 'data_prep', target: 'psi' },
+        { title: '逻辑回归', domain: 'ml.train', target: 'ss_sgd_train' },
+        { title: '线性回归', domain: 'ml.train', target: 'ss_sgd_train' },
+        { title: '异常值处理', domain: 'preprocessing', target: 'fillna' },
+        { title: '缺失值处理', domain: 'preprocessing', target: 'fillna' },
+        { title: '唯一值筛选', domain: 'data_filter', target: 'feature_filter' },
+        { title: '特征分箱', domain: 'preprocessing', target: 'vert_binning' },
+        { title: '标准化', domain: 'preprocessing', target: 'feature_calculate' },
+        { title: '相关系数', domain: 'stats', target: 'ss_pearsonr' },
+      ];
+      const children = aliases.flatMap(({ domain, title, target }) => {
+        const source = this.componentList[mode].find(
+          (component) => component.domain === domain && component.name === target,
+        );
+        return source
+          ? [
+              {
+                category: 'intelligent_modeling',
+                title: { val: title },
+                docString: source.desc,
+                isLeaf: true,
+                key: `intelligent_modeling/${title}`,
+                version: source.version,
+              },
+            ]
+          : [];
+      });
+      list.unshift({
+        category: '',
+        title: { val: '沙箱智能建模' },
+        key: '沙箱智能建模',
+        isLeaf: false,
+        docString: '',
+        children,
+      });
+    }
+
     const domainOrder = [
+      '沙箱智能建模',
       '数据准备',
       'data_filter',
       '特征处理',

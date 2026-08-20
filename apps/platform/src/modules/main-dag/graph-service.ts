@@ -109,10 +109,12 @@ export class GraphService implements GraphEventHandlerProtocol {
   onComponentDrag({
     component,
     status,
+    displayName,
     e,
   }: {
     component: Component;
     status: NodeStatus;
+    displayName?: string;
     e: React.MouseEvent<HTMLDivElement, MouseEvent>;
   }) {
     const { search } = window.location;
@@ -137,7 +139,7 @@ export class GraphService implements GraphEventHandlerProtocol {
       ActionType.dragNode,
       {
         id: `test-node-${Date.now()}`,
-        label: (interpretion && interpretion[name]) || name,
+        label: displayName || (interpretion && interpretion[name]) || name,
         codeName: `${component.domain}/${component.name}`,
         version: component.version,
         outputs: nodeOutputs,

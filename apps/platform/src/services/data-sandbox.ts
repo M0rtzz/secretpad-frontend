@@ -19,6 +19,16 @@ const post = <T>(path: string, data?: Record<string, any>) =>
   });
 
 export const DataSandboxApi = {
+  modeling: () => get<DataSandboxRecord>('/modeling'),
+  modelingComponent: (code: string) =>
+    get<DataSandboxRecord>('/modeling/components/detail', { code }),
+  saveModelingProfile: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/modeling/profiles/save', data),
+  deleteModelingProfile: (id: string) => post('/modeling/profiles/delete', { id }),
+  validateModeling: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/modeling/components/validate', data),
+  modelingRuns: (projectId = '') =>
+    get<DataSandboxRecord[]>('/modeling/runs', { projectId }),
   sandboxes: (params?: DataSandboxRecord) =>
     get<DataSandboxRecord[]>('/sandboxes', params),
   createSandbox: (data: DataSandboxRecord) =>
