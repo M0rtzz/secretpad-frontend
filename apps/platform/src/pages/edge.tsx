@@ -10,6 +10,7 @@ import {
   FundOutlined,
   SafetyCertificateOutlined,
   ToolOutlined,
+  ExperimentOutlined as ModelingOutlined,
 } from '@ant-design/icons';
 import { parse } from 'query-string';
 import { lazy, useEffect } from 'react';
@@ -99,6 +100,11 @@ const ModelCenterComponent = lazy(() =>
     default: Component,
   })),
 );
+const IntelligentModelingComponent = lazy(() =>
+  import('@/modules/intelligent-modeling').then(
+    ({ IntelligentModelingComponent: Component }) => ({ default: Component }),
+  ),
+);
 
 const menuItems: {
   label: string;
@@ -153,6 +159,12 @@ const menuItems: {
     icon: <AuditOutlined />,
     component: <SandboxApprovalComponent />,
     key: 'sandbox-approval',
+  },
+  {
+    label: '智能建模',
+    icon: <ModelingOutlined />,
+    component: <IntelligentModelingComponent />,
+    key: 'intelligent-modeling',
   },
   {
     label: '数据治理',

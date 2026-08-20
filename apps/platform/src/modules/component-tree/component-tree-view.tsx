@@ -158,7 +158,21 @@ export class ComponentTreeView extends Model {
       return;
     }
     const { componentList } = this.componentTreeService;
-    const searchRes = componentList[mode]
+    const aliases =
+      mode === 'MPC'
+        ? [
+            { name: '数据对齐', target: 'psi', domain: 'data_prep' },
+            { name: '逻辑回归', target: 'ss_sgd_train', domain: 'ml.train' },
+            { name: '线性回归', target: 'ss_sgd_train', domain: 'ml.train' },
+            { name: '异常值处理', target: 'fillna', domain: 'preprocessing' },
+            { name: '缺失值处理', target: 'fillna', domain: 'preprocessing' },
+            { name: '唯一值筛选', target: 'feature_filter', domain: 'data_filter' },
+            { name: '特征分箱', target: 'vert_binning', domain: 'preprocessing' },
+            { name: '标准化', target: 'feature_calculate', domain: 'preprocessing' },
+            { name: '相关系数', target: 'ss_pearsonr', domain: 'stats' },
+          ]
+        : [];
+    const candidates = componentList[mode]
       .map(({ name, desc, domain, version }) => ({
         isLeaf: true,
         title: { val: name },
@@ -167,19 +181,38 @@ export class ComponentTreeView extends Model {
         category: domain,
         version,
       }))
-      .filter(({ category, version, key }) => {
-        const interpretion =
-          this.componentInterpreter.getComponentTranslationMap(
-            {
-              domain: category,
-              name: key,
-              version,
-            },
-            mode,
-          ) || {};
+      .concat(
+        aliases.flatMap(({ name, target, domain }) => {
+          const source = componentList[mode].find(
+            (item) => item.domain === domain && item.name === target,
+          );
+          return source
+            ? [
+                {
+                  isLeaf: true,
+                  title: { val: name },
+                  key: `intelligent_modeling/${name}`,
+                  docString: source.desc,
+                  category: 'intelligent_modeling',
+                  version: source.version,
+                },
+              ]
+            : [];
+        }),
+      );
+    const searchRes = candidates.filter(({ category, version, key }) => {
+      const interpretion =
+        this.componentInterpreter.getComponentTranslationMap(
+          {
+            domain: category,
+            name: key,
+            version,
+          },
+          mode,
+        ) || {};
 
-        return (interpretion[key] || key).toLowerCase().includes(keyword.toLowerCase());
-      });
+      return (interpretion[key] || key).toLowerCase().includes(keyword.toLowerCase());
+    });
 
     this.searchComponents = searchRes;
   };

@@ -34,6 +34,16 @@ const post = <T>(path: string, data?: Record<string, any>) =>
   });
 
 export const DataSandboxApi = {
+  modeling: () => get<DataSandboxRecord>('/modeling'),
+  modelingComponent: (code: string) =>
+    get<DataSandboxRecord>('/modeling/components/detail', { code }),
+  saveModelingProfile: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/modeling/profiles/save', data),
+  deleteModelingProfile: (id: string) => post('/modeling/profiles/delete', { id }),
+  validateModeling: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/modeling/components/validate', data),
+  modelingRuns: (projectId = '') =>
+    get<DataSandboxRecord[]>('/modeling/runs', { projectId }),
   sandboxes: (params?: DataSandboxRecord) =>
     get<DataSandboxRecord[]>('/sandboxes', params),
   createSandbox: (data: DataSandboxRecord) =>
@@ -89,6 +99,8 @@ export const DataSandboxApi = {
   createClient: (data: DataSandboxRecord) =>
     post<DataSandboxRecord>('/integrations/clients/create', data),
   revokeClient: (id: string) => post('/integrations/clients/revoke', { id }),
+  rotateClient: (id: string) =>
+    post<DataSandboxRecord>('/integrations/clients/rotate', { id }),
   saveWebhook: (data: DataSandboxRecord) =>
     post<DataSandboxRecord>('/integrations/webhooks/save', data),
   testWebhook: (id: string) =>
@@ -98,12 +110,50 @@ export const DataSandboxApi = {
   saveOidc: (data: DataSandboxRecord) =>
     post<DataSandboxRecord>('/integrations/oidc/save', data),
   testOidc: () => post<DataSandboxRecord>('/integrations/oidc/test'),
+  oidcLogin: (redirectUri: string) =>
+    get<DataSandboxRecord>('/integrations/oidc/login', { redirectUri }),
+  saveOidcMapping: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/integrations/oidc/mappings/save', data),
+  deleteOidcMapping: (id: string) => post('/integrations/oidc/mappings/delete', { id }),
+
+  tenants: () => get<DataSandboxRecord[]>('/tenants'),
+  openTenant: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/tenants/open', data),
+  resizeTenant: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/tenants/resize', data),
+  deployTenant: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/tenants/deploy', data),
+  tenantUsage: (tenantId: string) =>
+    get<DataSandboxRecord[]>('/billing/usage', { tenantId }),
+  calculateBilling: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/billing/calculate', data),
+  reportBilling: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/billing/report', data),
+  trustedExchanges: (tenantId = '') =>
+    get<DataSandboxRecord[]>('/trusted/exchanges', { tenantId }),
+  trustedPush: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/trusted/push', data),
+  trustedCallback: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/trusted/callback', data),
+  verifyTrusted: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/trusted/verify', data),
+  trustedPolicies: (tenantId: string) =>
+    get<DataSandboxRecord[]>('/trusted/policies', { tenantId }),
+  saveTrustedPolicy: (data: DataSandboxRecord) =>
+    post<DataSandboxRecord>('/trusted/policies/save', data),
 
   operations: () => get<DataSandboxRecord>('/operations'),
   createBackup: () => post<DataSandboxRecord>('/operations/backups/create'),
   restoreBackup: (id: string) =>
     post<DataSandboxRecord>('/operations/backups/restore', { id }),
+  verifyBackup: (id: string) =>
+    post<DataSandboxRecord>('/operations/backups/verify', { id }),
+  drillRecovery: (id: string) =>
+    post<DataSandboxRecord>('/operations/backups/drill', { id }),
+  rollbackRecoveryPoint: (id: string) =>
+    post<DataSandboxRecord>('/operations/recovery-points/rollback', { id }),
   diagnostics: () => post<DataSandboxRecord>('/operations/diagnostics'),
+  securityScan: () => post<DataSandboxRecord>('/operations/security/scan'),
   help: () => get<DataSandboxRecord[]>('/operations/help'),
   createTicket: (data: DataSandboxRecord) =>
     post<DataSandboxRecord>('/operations/tickets/create', data),
