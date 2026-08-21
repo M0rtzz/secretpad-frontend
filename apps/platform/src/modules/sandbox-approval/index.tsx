@@ -72,6 +72,7 @@ export const SandboxApprovalComponent = () => {
   const [keyword, setKeyword] = useState('');
   const [view, setView] = useState('mine');
   const [reviewItem, setReviewItem] = useState<DataSandboxRecord>();
+  const [reviewAction, setReviewAction] = useState('');
   const [history, setHistory] = useState<DataSandboxRecord[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detail, setDetail] = useState<DataSandboxRecord>();
@@ -98,11 +99,16 @@ export const SandboxApprovalComponent = () => {
     if (!reviewItem) return;
     try {
       responseData(
-        await DataSandboxApi.approvalAction({ id: reviewItem.id, ...values }),
+        await DataSandboxApi.approvalAction({
+          id: reviewItem.id,
+          action: reviewAction,
+          ...values,
+        }),
         {},
       );
       message.success('审批操作完成');
       setReviewItem(undefined);
+      setReviewAction('');
       reviewForm.resetFields();
       refresh();
     } catch (error: any) {
@@ -118,6 +124,12 @@ export const SandboxApprovalComponent = () => {
     } catch (error: any) {
       message.error(error.message || '操作失败');
     }
+  };
+
+  const openReview = (item: DataSandboxRecord, action: string) => {
+    setReviewItem(item);
+    setReviewAction(action);
+    reviewForm.resetFields();
   };
 
   return (
@@ -209,18 +221,17 @@ export const SandboxApprovalComponent = () => {
           { title: '提交时间', dataIndex: 'submitted_at', render: formatTime },
           {
             title: '操作',
-            width: 240,
+            width: 280,
             render: (_: unknown, row: DataSandboxRecord) => (
               <Space wrap>
                 {view === 'review' && REVIEWABLE.includes(row.status) && (
-                  <Button
-                    type="link"
-                    onClick={() => {
-                      setReviewItem(row);
-                      reviewForm.setFieldsValue({ action: 'APPROVE' });
-                    }}
-                  >
-                    审批
+                  <Button type="link" onClick={() => openReview(row, 'APPROVE')}>
+                    同意
+                  </Button>
+                )}
+                {view === 'review' && REVIEWABLE.includes(row.status) && (
+                  <Button type="link" danger onClick={() => openReview(row, 'REJECT')}>
+                    拒绝
                   </Button>
                 )}
                 {view === 'mine' && row.status === 'REJECTED' && (
@@ -266,25 +277,20 @@ export const SandboxApprovalComponent = () => {
       />
 
       <Modal
-        title={`审批：${reviewItem?.id || ''}（${
-          reviewItem ? typeLabels[reviewItem.approval_type] : ''
-        }）`}
+        title={`${reviewAction === 'APPROVE' ? '同意' : '拒绝'}：${
+          reviewItem?.id || ''
+        }（${reviewItem ? typeLabels[reviewItem.approval_type] : ''}）`}
         open={!!reviewItem}
-        onCancel={() => setReviewItem(undefined)}
+        onCancel={() => {
+          setReviewItem(undefined);
+          setReviewAction('');
+        }}
         onOk={() => reviewForm.submit()}
+        okText={reviewAction === 'APPROVE' ? '确认同意' : '确认拒绝'}
+        cancelText="取消"
+        okButtonProps={reviewAction === 'REJECT' ? { danger: true } : undefined}
       >
         <Form form={reviewForm} layout="vertical" onFinish={review}>
-          <Form.Item name="action" label="审批结果" rules={[{ required: true }]}>
-            <Select
-              options={[
-                {
-                  value: 'APPROVE',
-                  label: '本节点审核通过',
-                },
-                { value: 'REJECT', label: '驳回' },
-              ]}
-            />
-          </Form.Item>
           <Form.Item name="comment" label="审批意见" rules={[{ required: true }]}>
             <Input.TextArea rows={4} />
           </Form.Item>
