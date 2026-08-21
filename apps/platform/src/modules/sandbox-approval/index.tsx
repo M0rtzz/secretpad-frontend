@@ -207,11 +207,27 @@ export const SandboxApprovalComponent = () => {
           {
             title: '状态',
             dataIndex: 'status',
-            render: (v: string, row: DataSandboxRecord) => (
-              <Tooltip title={row.last_error || ''}>
-                <Tag color={statusColors[v]}>{statusLabels[v] || v}</Tag>
-              </Tooltip>
-            ),
+            render: (v: string, row: DataSandboxRecord) => {
+              const error = String(row.last_error || '').trim();
+              const source = String(row.executor || 'system');
+              const errorDetail = error
+                ? `${
+                    source.startsWith('system:') ? source : `system:${source}`
+                  } · ${error}`
+                : '';
+              return (
+                <Space direction="vertical" size={0}>
+                  <Tooltip title={errorDetail}>
+                    <Tag color={statusColors[v]}>{statusLabels[v] || v}</Tag>
+                  </Tooltip>
+                  {v === 'FAILED' && errorDetail && (
+                    <span style={{ color: '#ff4d4f', maxWidth: 260 }}>
+                      {errorDetail}
+                    </span>
+                  )}
+                </Space>
+              );
+            },
           },
           {
             title: '重试',
