@@ -99,7 +99,9 @@ export const SandboxManagerComponent = () => {
     setError('');
     try {
       const [sandboxResponse, imageResponse, projectResponse] = await Promise.all([
-        DataSandboxApi.sandboxes({ ownerId }),
+        // 沙箱创建审批以节点 platformNodeId 作为 owner_id 保存；登录用户的
+        // ownerId 可能是机构/账号 ID，使用它会把审批后创建的沙箱过滤掉。
+        DataSandboxApi.sandboxes({ ownerId: currentNodeId }),
         DataSandboxApi.images(),
         API.P2PProjectController.listP2PProject(),
       ]);
@@ -113,7 +115,7 @@ export const SandboxManagerComponent = () => {
     } finally {
       setLoading(false);
     }
-  }, [ownerId]);
+  }, [currentNodeId]);
 
   useEffect(() => {
     refresh();
