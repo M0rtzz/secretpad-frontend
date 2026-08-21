@@ -198,6 +198,10 @@ export const DataAssetApi = {
     assetPost<DataSandboxRecord[]>('/projects/attach', data),
   createApiSnapshot: (data: DataSandboxRecord) =>
     assetPost<DataSandboxRecord>('/api-snapshots', data),
+  previewDatabase: (data: DataSandboxRecord) =>
+    assetPost<DataSandboxRecord>('/database/preview', data),
+  importDatabase: (data: DataSandboxRecord) =>
+    assetPost<DataSandboxRecord>('/database/import', data),
   sandboxMounts: (sandboxId: string) =>
     assetGet<DataSandboxRecord[]>('/sandboxes/mounts', { sandboxId }),
   usageRequests: (params?: DataSandboxRecord) =>

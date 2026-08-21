@@ -2,9 +2,11 @@ import {
   Button,
   Form,
   Input,
+  InputNumber,
   message,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -32,6 +34,11 @@ export const DataCatalogComponent = () => {
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState('file');
   const [apiForm] = Form.useForm();
+  const [databaseForm] = Form.useForm();
+  const [databasePreview, setDatabasePreview] = useState<DataSandboxRecord>();
+  const [databaseLoading, setDatabaseLoading] = useState(false);
+  const databaseType = Form.useWatch('databaseType', databaseForm);
+  const queryMode = Form.useWatch('queryMode', databaseForm);
   const [fileName, setFileName] = useState('');
   const [addLoading, setAddLoading] = useState(false);
 
@@ -82,6 +89,45 @@ export const DataCatalogComponent = () => {
       message.error(error.message || 'API 快照添加失败');
     } finally {
       setAddLoading(false);
+    }
+  };
+
+  const databaseRequest = (values: DataSandboxRecord) => ({
+    ...values,
+    tableName: values.queryMode === 'table' ? values.tableName : '',
+    sql: values.queryMode === 'sql' ? values.sql : '',
+  });
+
+  const previewDatabase = async () => {
+    try {
+      const values = await databaseForm.validateFields();
+      setDatabaseLoading(true);
+      setDatabasePreview(
+        responseData(await DataAssetApi.previewDatabase(databaseRequest(values)), {}),
+      );
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error.message || '数据库预览失败');
+    } finally {
+      setDatabaseLoading(false);
+    }
+  };
+
+  const importDatabase = async () => {
+    try {
+      const values = await databaseForm.validateFields();
+      setDatabaseLoading(true);
+      await DataAssetApi.importDatabase(databaseRequest(values));
+      message.success('库表数据已落盘并注册为本地数据资产');
+      setAddOpen(false);
+      setDatabasePreview(undefined);
+      databaseForm.resetFields();
+      refresh();
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error.message || '数据库导入失败');
+    } finally {
+      setDatabaseLoading(false);
     }
   };
 
@@ -344,25 +390,121 @@ export const DataCatalogComponent = () => {
               label: '库表接入',
               children: (
                 <Form
+                  form={databaseForm}
                   layout="vertical"
-                  onFinish={() =>
-                    message.info(
-                      '库表接入接口正在接入，请先注册数据源后使用数据源管理。',
-                    )
-                  }
+                  initialValues={{
+                    databaseType: 'MYSQL',
+                    port: 3306,
+                    queryMode: 'table',
+                    protocol: 'MYSQL',
+                  }}
                 >
                   <Form.Item name="name" label="数据名称" rules={[{ required: true }]}>
                     <Input />
                   </Form.Item>
-                  <Form.Item name="sql" label="查询 SQL" rules={[{ required: true }]}>
-                    <Input.TextArea
-                      rows={5}
-                      placeholder="SELECT * FROM table_name LIMIT 1000"
+                  <Space align="start" wrap>
+                    <Form.Item
+                      name="databaseType"
+                      label="数据库类型"
+                      rules={[{ required: true }]}
+                    >
+                      <Select
+                        style={{ width: 160 }}
+                        onChange={(value) =>
+                          databaseForm.setFieldValue(
+                            'port',
+                            value === 'POSTGRESQL' ? 5432 : 3306,
+                          )
+                        }
+                        options={[
+                          { value: 'MYSQL', label: 'MySQL' },
+                          { value: 'POSTGRESQL', label: 'PostgreSQL' },
+                          { value: 'OCEANBASE', label: 'OceanBase' },
+                          { value: 'POLARDB', label: 'PolarDB' },
+                        ]}
+                      />
+                    </Form.Item>
+                    {databaseType === 'POLARDB' && (
+                      <Form.Item name="protocol" label="兼容协议">
+                        <Select
+                          style={{ width: 160 }}
+                          options={[
+                            { value: 'MYSQL', label: 'MySQL' },
+                            { value: 'POSTGRESQL', label: 'PostgreSQL' },
+                          ]}
+                        />
+                      </Form.Item>
+                    )}
+                  </Space>
+                  <Space align="start" wrap>
+                    <Form.Item name="host" label="主机" rules={[{ required: true }]}>
+                      <Input style={{ width: 260 }} placeholder="127.0.0.1" />
+                    </Form.Item>
+                    <Form.Item name="port" label="端口" rules={[{ required: true }]}>
+                      <InputNumber min={1} max={65535} style={{ width: 120 }} />
+                    </Form.Item>
+                  </Space>
+                  <Space align="start" wrap>
+                    <Form.Item
+                      name="database"
+                      label="数据库名称"
+                      rules={[{ required: true }]}
+                    >
+                      <Input style={{ width: 220 }} />
+                    </Form.Item>
+                    <Form.Item
+                      name="username"
+                      label="只读账号"
+                      rules={[{ required: true }]}
+                    >
+                      <Input style={{ width: 180 }} />
+                    </Form.Item>
+                    <Form.Item name="password" label="密码">
+                      <Input.Password style={{ width: 180 }} />
+                    </Form.Item>
+                  </Space>
+                  <Form.Item name="queryMode" label="读取方式">
+                    <Segmented
+                      options={[
+                        { value: 'table', label: '全表读取' },
+                        { value: 'sql', label: 'SQL 过滤' },
+                      ]}
                     />
                   </Form.Item>
-                  <Button type="primary" htmlType="submit">
-                    预览数据
-                  </Button>
+                  {queryMode === 'sql' ? (
+                    <Form.Item name="sql" label="只读 SQL" rules={[{ required: true }]}>
+                      <Input.TextArea
+                        rows={5}
+                        placeholder="SELECT * FROM schema.table_name WHERE status = 'ACTIVE'"
+                      />
+                    </Form.Item>
+                  ) : (
+                    <Form.Item
+                      name="tableName"
+                      label="表名"
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder="schema.table_name" />
+                    </Form.Item>
+                  )}
+                  <Space>
+                    <Button loading={databaseLoading} onClick={previewDatabase}>
+                      测试并预览
+                    </Button>
+                    <Button
+                      type="primary"
+                      loading={databaseLoading}
+                      disabled={!databasePreview}
+                      onClick={importDatabase}
+                    >
+                      导入为数据资产
+                    </Button>
+                  </Space>
+                  {databasePreview && (
+                    <div style={{ marginTop: 16 }}>
+                      <DataAssetPreviewTable preview={databasePreview} />
+                    </div>
+                  )}
                 </Form>
               ),
             },
