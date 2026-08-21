@@ -64,6 +64,7 @@ export const SandboxManagerComponent = () => {
   const [changeItem, setChangeItem] = useState<DataSandboxRecord>();
   const [changeType, setChangeType] = useState('');
   const [changeAssets, setChangeAssets] = useState<DataSandboxRecord[]>([]);
+  const [renewItem, setRenewItem] = useState<DataSandboxRecord>();
   const [mounts, setMounts] = useState<DataSandboxRecord[]>([]);
   const [mountsOpen, setMountsOpen] = useState(false);
   const [recyclingId, setRecyclingId] = useState('');
@@ -71,6 +72,7 @@ export const SandboxManagerComponent = () => {
   const [imageForm] = Form.useForm();
   const [allowlistForm] = Form.useForm();
   const [changeForm] = Form.useForm();
+  const [renewForm] = Form.useForm();
   // 门禁直通角色：平台管理员（与后端 SandboxApprovalGate.isAdmin 一致）
   const isAdmin =
     loginService?.userInfo?.ownerId === 'kuscia-system' &&
@@ -249,6 +251,30 @@ export const SandboxManagerComponent = () => {
     }
   };
 
+  const openRenew = (record: DataSandboxRecord) => {
+    setRenewItem(record);
+    renewForm.resetFields();
+    renewForm.setFieldsValue({ days: 7 });
+  };
+
+  const submitRenew = async (values: DataSandboxRecord) => {
+    if (!renewItem) return;
+    try {
+      responseData(
+        await DataSandboxApi.approvalSubmit({
+          approvalType: 'RENEW',
+          sandboxId: renewItem.id,
+          ...values,
+        }),
+        {},
+      );
+      message.success('续期申请已提交');
+      setRenewItem(undefined);
+    } catch (error: any) {
+      message.error(error.message || '提交续期申请失败');
+    }
+  };
+
   const submitRecycle = async (record: DataSandboxRecord) => {
     setRecyclingId(record.id);
     try {
@@ -384,19 +410,9 @@ export const SandboxManagerComponent = () => {
                   size="small"
                   type="link"
                   disabled={!creator}
-                  onClick={async () => {
-                    responseData(
-                      await DataSandboxApi.approvalSubmit({
-                        approvalType: 'RENEW',
-                        sandboxId: record.id,
-                        days: 7,
-                      }),
-                      {},
-                    );
-                    message.success('续期申请已提交');
-                  }}
+                  onClick={() => openRenew(record)}
                 >
-                  续期7天
+                  续期
                 </Button>
                 <Button
                   disabled={!creator}
@@ -614,6 +630,57 @@ export const SandboxManagerComponent = () => {
               ]}
             />
           </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`申请沙箱续期：${renewItem?.name || ''}`}
+        open={!!renewItem}
+        onCancel={() => setRenewItem(undefined)}
+        onOk={() => renewForm.submit()}
+        okText="提交申请"
+        cancelText="取消"
+      >
+        <Form form={renewForm} layout="vertical" onFinish={submitRenew}>
+          <Form.Item label="当前到期时间">
+            {formatTime(renewItem?.expires_at)}
+          </Form.Item>
+          <Form.Item
+            name="days"
+            label="续期天数"
+            rules={[
+              { required: true, message: '请输入续期天数' },
+              {
+                type: 'integer',
+                min: 1,
+                max: 365,
+                message: '续期天数必须是 1-365 的整数',
+              },
+            ]}
+          >
+            <InputNumber
+              min={1}
+              max={365}
+              precision={0}
+              addonAfter="天"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+          <Form.Item
+            name="reason"
+            label="申请原因"
+            rules={[{ max: 500, message: '申请原因不能超过500个字符' }]}
+          >
+            <Input.TextArea
+              rows={3}
+              showCount
+              maxLength={500}
+              placeholder="说明本次续期的业务原因"
+            />
+          </Form.Item>
+          <Typography.Text type="secondary">
+            审批通过后，将按执行时间加上所选天数重新计算到期时间。
+          </Typography.Text>
         </Form>
       </Modal>
 
