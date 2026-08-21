@@ -17,21 +17,19 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 
-import {
-  DataGovernanceApi,
-  DataAssetApi,
-  DataSandboxRecord,
-  responseData,
-} from '@/services/data-sandbox';
-import { listP2PProject } from '@/services/secretpad/P2PProjectController';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
+import { DataGovernanceApi, DataAssetApi, responseData } from '@/services/data-sandbox';
+import type { DataSandboxRecord } from '@/services/data-sandbox';
+import { listP2PProject } from '@/services/secretpad/P2PProjectController';
 
-const samplingMethods = [
-  { value: 'RANDOM', label: '随机抽样' },
-  { value: 'SYSTEMATIC', label: '等距抽样' },
-  { value: 'STRATIFIED', label: '分层抽样' },
-  { value: 'CLUSTER', label: '整群抽样' },
-];
+import {
+  GovernanceConfigFields,
+  governanceColumnsFromPreview,
+  maskingFormRows,
+  samplingFormValues,
+  transformMaskingRows,
+  transformSamplingForm,
+} from './governance-config-form';
 
 const policyTypeLabels: Record<string, string> = {
   SAMPLING: '抽样',
@@ -71,6 +69,7 @@ export const DataGovernanceComponent = () => {
   const [policyOpen, setPolicyOpen] = useState(false);
   const [policyItem, setPolicyItem] = useState<DataSandboxRecord>();
   const [policyForm] = Form.useForm();
+  const editingPolicyType = Form.useWatch('policyType', policyForm);
 
   /* --------------------------------- 任务 --------------------------------- */
   const [tasks, setTasks] = useState<DataSandboxRecord[]>([]);
@@ -171,8 +170,9 @@ export const DataGovernanceComponent = () => {
     policyForm.setFieldsValue({
       policyType: 'SAMPLING',
       samplingMethod: 'RANDOM',
-      samplingParams: '{"count": 100}',
-      maskingColumns: '[]',
+      samplingMode: 'count',
+      samplingCount: 100,
+      maskingRows: [],
     });
     setPolicyOpen(true);
   };
@@ -183,23 +183,41 @@ export const DataGovernanceComponent = () => {
       name: row.name,
       description: row.description || '',
       policyType: row.policy_type,
-      samplingMethod: row.sampling_method || '',
-      samplingParams: row.sampling_params,
-      maskingColumns: row.masking_columns,
+      ...samplingFormValues(row.sampling_method, row.sampling_params),
+      maskingRows: maskingFormRows(row.masking_columns),
     });
     setPolicyOpen(true);
   };
 
   const savePolicy = async (values: DataSandboxRecord) => {
     try {
+      const payload = { ...values };
+      payload.samplingParams =
+        values.policyType === 'MASKING'
+          ? '{}'
+          : JSON.stringify(transformSamplingForm(values));
+      payload.maskingColumns =
+        values.policyType === 'SAMPLING'
+          ? '[]'
+          : JSON.stringify(transformMaskingRows(values.maskingRows || []));
+      if (values.policyType === 'MASKING') payload.samplingMethod = '';
+      delete payload.samplingMode;
+      delete payload.samplingCount;
+      delete payload.samplingRatio;
+      delete payload.samplingSeed;
+      delete payload.strataColumns;
+      delete payload.clusterMode;
+      delete payload.clusterColumn;
+      delete payload.blockSize;
+      delete payload.maskingRows;
       if (policyItem?.id) {
         responseData(
-          await DataGovernanceApi.updatePolicy({ id: policyItem.id, ...values }),
+          await DataGovernanceApi.updatePolicy({ id: policyItem.id, ...payload }),
           {},
         );
         message.success('策略已更新');
       } else {
-        responseData(await DataGovernanceApi.createPolicy(values), {});
+        responseData(await DataGovernanceApi.createPolicy(payload), {});
         message.success('策略已创建');
       }
       setPolicyOpen(false);
@@ -231,36 +249,46 @@ export const DataGovernanceComponent = () => {
   const onPolicyChange = (policyId?: string) => {
     const policy = (policies || []).find((p) => p.id === policyId);
     if (policy) {
+      const columns = governanceColumnsFromPreview(preview);
       taskForm.setFieldsValue({
-        samplingMethod: policy.sampling_method || '',
-        samplingParams: policy.sampling_params || '',
-        maskingColumns: policy.masking_columns || '',
+        ...samplingFormValues(policy.sampling_method, policy.sampling_params),
+        maskingRows: maskingFormRows(policy.masking_columns, columns),
       });
     } else {
       taskForm.setFieldsValue({
         samplingMethod: undefined,
-        samplingParams: undefined,
-        maskingColumns: undefined,
+        maskingRows: maskingFormRows([], governanceColumnsFromPreview(preview)),
       });
     }
   };
 
-  const previewSource = async () => {
-    const { nodeId, datatableId, limit } = taskForm.getFieldsValue();
+  const loadSourcePreview = async (nodeId: string, datatableId: string, limit = 5) => {
     if (!nodeId || !datatableId) {
       message.warning('请先填写源节点与数据表 ID');
       return;
     }
     try {
-      setPreview(
-        responseData(
-          await DataGovernanceApi.preview(nodeId, datatableId, limit || 5),
-          {},
+      const sourcePreview = responseData(
+        await DataGovernanceApi.preview(nodeId, datatableId, limit || 5),
+        {},
+      );
+      setPreview(sourcePreview);
+      const currentRows = taskForm.getFieldValue('maskingRows') || [];
+      taskForm.setFieldValue(
+        'maskingRows',
+        maskingFormRows(
+          transformMaskingRows(currentRows),
+          governanceColumnsFromPreview(sourcePreview),
         ),
       );
     } catch (error: any) {
       message.error(error.message || '预览失败');
     }
+  };
+
+  const previewSource = async () => {
+    const { nodeId, datatableId, limit } = taskForm.getFieldsValue();
+    await loadSourcePreview(nodeId, datatableId, limit || 5);
   };
 
   /** 组装后端契约：内联抽样 {method,...params}、内联脱敏 [{column,method,params}]、policyId；剔除表单专用字段。
@@ -269,39 +297,31 @@ export const DataGovernanceComponent = () => {
     const payload: DataSandboxRecord = { ...values };
     delete payload.limit; // 预览行数，非任务参数
     delete payload.samplingMethod;
-    delete payload.samplingParams;
-    delete payload.maskingColumns;
+    delete payload.samplingMode;
+    delete payload.samplingCount;
+    delete payload.samplingRatio;
+    delete payload.samplingSeed;
+    delete payload.strataColumns;
+    delete payload.clusterMode;
+    delete payload.clusterColumn;
+    delete payload.blockSize;
+    delete payload.maskingRows;
     if ((payload.execMode || 'BUILTIN') === 'CUSTOM') {
       delete payload.sampling;
       delete payload.masking;
       return payload;
     }
-    // 抽样：samplingMethod + samplingParams(JSON) → {method, ...params}
+    // 抽样：结构化表单 → {method,...params}
     if (values.samplingMethod) {
-      const sampling: DataSandboxRecord = { method: values.samplingMethod };
-      if (values.samplingParams) {
-        try {
-          Object.assign(sampling, JSON.parse(values.samplingParams));
-        } catch {
-          throw new Error('抽样参数 JSON 格式错误');
-        }
-      }
-      payload.sampling = sampling;
+      payload.sampling = {
+        method: values.samplingMethod,
+        ...transformSamplingForm(values),
+      };
     }
-    // 脱敏：maskingColumns(JSON 数组) → [{column,method,params}]
-    if (values.maskingColumns) {
-      try {
-        const parsed = JSON.parse(values.maskingColumns);
-        if (!Array.isArray(parsed)) {
-          throw new Error('脱敏列配置必须是 JSON 数组');
-        }
-        if (parsed.length > 0) {
-          payload.masking = parsed;
-        }
-      } catch (error: any) {
-        if (error?.message?.includes('必须是')) throw error;
-        throw new Error('脱敏列配置 JSON 格式错误');
-      }
+    // 脱敏：逐列表单 → [{column,method,params}]
+    const masking = transformMaskingRows(values.maskingRows || []);
+    if (masking.length > 0) {
+      payload.masking = masking;
     }
     return payload;
   };
@@ -691,7 +711,7 @@ export const DataGovernanceComponent = () => {
       <Modal
         title={policyItem?.id ? `编辑策略：${policyItem.name}` : '新建策略'}
         open={policyOpen}
-        width={680}
+        width={1100}
         onCancel={() => setPolicyOpen(false)}
         onOk={() => policyForm.submit()}
       >
@@ -710,27 +730,12 @@ export const DataGovernanceComponent = () => {
               }))}
             />
           </Form.Item>
-          <Form.Item name="samplingMethod" label="抽样方法">
-            <Select allowClear options={samplingMethods} placeholder="不抽样则留空" />
-          </Form.Item>
-          <Form.Item
-            name="samplingParams"
-            label="抽样参数 (JSON)"
-            tooltip={
-              '例如 {"count":100} 或 {"ratio":0.1,"seed":1}；分层需 strataColumns，整群需 clusterColumn/blockSize'
-            }
-          >
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item
-            name="maskingColumns"
-            label="脱敏列配置 (JSON)"
-            tooltip={
-              '例如 [{"column":"phone","method":"MASK","params":{"keepLeft":"3","keepRight":"4"}}]'
-            }
-          >
-            <Input.TextArea rows={4} />
-          </Form.Item>
+          <GovernanceConfigFields
+            form={policyForm}
+            allowCustomColumns
+            enableSampling={editingPolicyType !== 'MASKING'}
+            enableMasking={editingPolicyType !== 'SAMPLING'}
+          />
         </Form>
       </Modal>
 
@@ -738,7 +743,7 @@ export const DataGovernanceComponent = () => {
       <Modal
         title="提交数据抽样与脱敏任务"
         open={taskOpen}
-        width={760}
+        width={1180}
         onCancel={() => setTaskOpen(false)}
         onOk={() => taskForm.submit()}
       >
@@ -790,6 +795,14 @@ export const DataGovernanceComponent = () => {
                   nodeId: asset?.provider_node_id,
                   datatableId: asset?.datatable_id || asset?.id,
                 });
+                setPreview(undefined);
+                if (asset) {
+                  void loadSourcePreview(
+                    asset.provider_node_id,
+                    asset.datatable_id || asset.id,
+                    taskForm.getFieldValue('limit') || 5,
+                  );
+                }
               }}
               options={sourceAssets.map((asset) => ({
                 value: asset.id,
@@ -827,7 +840,7 @@ export const DataGovernanceComponent = () => {
                 size="small"
                 rowKey={(_, i) => String(i)}
                 pagination={false}
-                dataSource={(preview.rows || []).map((r: string[], i: number) => {
+                dataSource={(preview.rows || []).map((r: string[]) => {
                   const header = preview.header as string[];
                   return Object.fromEntries(header.map((h, j) => [h, r[j]]));
                 })}
@@ -840,24 +853,10 @@ export const DataGovernanceComponent = () => {
             </div>
           )}
           {(!taskMode || taskMode === 'BUILTIN') && (
-            <>
-              <Form.Item name="samplingMethod" label="抽样方法">
-                <Select
-                  allowClear
-                  options={samplingMethods}
-                  placeholder="留空则按策略或全量"
-                />
-              </Form.Item>
-              <Form.Item name="samplingParams" label="抽样参数 (JSON)">
-                <Input.TextArea rows={2} placeholder='{"count":100}' />
-              </Form.Item>
-              <Form.Item name="maskingColumns" label="脱敏列配置 (JSON)">
-                <Input.TextArea
-                  rows={3}
-                  placeholder='[{"column":"phone","method":"MASK","params":{"keepLeft":"3","keepRight":"4"}}]'
-                />
-              </Form.Item>
-            </>
+            <GovernanceConfigFields
+              form={taskForm}
+              columns={governanceColumnsFromPreview(preview)}
+            />
           )}
           {taskMode === 'CUSTOM' && (
             <>
