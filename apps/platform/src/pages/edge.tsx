@@ -1,23 +1,18 @@
 import Icon from '@ant-design/icons';
 import {
   ApiOutlined,
-  AppstoreOutlined,
   AuditOutlined,
-  BarChartOutlined,
   CalculatorOutlined,
-  CodeOutlined,
   DashboardOutlined,
   DeploymentUnitOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
-  FundOutlined,
-  PartitionOutlined,
   SafetyCertificateOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
 import { parse } from 'query-string';
 import { lazy, useEffect } from 'react';
-import { useLocation } from 'umi';
+import { history, useLocation } from 'umi';
 
 import { ReactComponent as DataManager } from '@/assets/jiaochabiao.svg';
 import { ReactComponent as CooperativeNode } from '@/assets/join-node.svg';
@@ -73,33 +68,13 @@ const DataGovernanceComponent = lazy(() =>
     }),
   ),
 );
-const DataComputeHomeComponent = lazy(() =>
-  import('@/modules/data-compute').then(({ DataComputeHomeComponent: Component }) => ({
+const DataComputeEntryComponent = lazy(() =>
+  import('@/modules/data-compute').then(({ DataComputeEntryComponent: Component }) => ({
     default: Component,
   })),
 );
-const SandboxDevelopmentComponent = lazy(() =>
-  import('@/modules/data-compute').then(
-    ({ SandboxDevelopmentComponent: Component }) => ({ default: Component }),
-  ),
-);
-const CustomAlgorithmComponent = lazy(() =>
-  import('@/modules/data-compute').then(({ CustomAlgorithmComponent: Component }) => ({
-    default: Component,
-  })),
-);
-const ModelingComponentsComponent = lazy(() =>
-  import('@/modules/data-compute').then(
-    ({ ModelingComponentsComponent: Component }) => ({ default: Component }),
-  ),
-);
-const VisualModelingComponent = lazy(() =>
-  import('@/modules/data-compute').then(({ VisualModelingComponent: Component }) => ({
-    default: Component,
-  })),
-);
-const ModelReportsComponent = lazy(() =>
-  import('@/modules/data-compute').then(({ ModelReportsComponent: Component }) => ({
+const SandboxWorkspaceComponent = lazy(() =>
+  import('@/modules/data-compute').then(({ SandboxWorkspaceComponent: Component }) => ({
     default: Component,
   })),
 );
@@ -189,44 +164,7 @@ const menuItems: {
     label: '数据计算',
     icon: <CalculatorOutlined />,
     key: 'data-compute',
-    children: [
-      {
-        label: '数据计算首页',
-        key: 'data-compute-home',
-        icon: <DashboardOutlined />,
-        component: <DataComputeHomeComponent />,
-      },
-      {
-        label: '沙箱方式开发',
-        key: 'data-compute-dev',
-        icon: <CodeOutlined />,
-        component: <SandboxDevelopmentComponent />,
-      },
-      {
-        label: '自定义算法',
-        key: 'data-compute-algorithm',
-        icon: <FundOutlined />,
-        component: <CustomAlgorithmComponent />,
-      },
-      {
-        label: '建模组件',
-        key: 'data-compute-components',
-        icon: <AppstoreOutlined />,
-        component: <ModelingComponentsComponent />,
-      },
-      {
-        label: '可视化建模',
-        key: 'data-compute-visual',
-        icon: <PartitionOutlined />,
-        component: <VisualModelingComponent />,
-      },
-      {
-        label: '模型报告信息',
-        key: 'data-compute-report',
-        icon: <BarChartOutlined />,
-        component: <ModelReportsComponent />,
-      },
-    ],
+    component: <DataComputeEntryComponent />,
   },
   {
     label: '工作台',
@@ -273,7 +211,7 @@ const menuItems: {
 ];
 const EdgePage = () => {
   const { search } = useLocation();
-  const { ownerId } = parse(search);
+  const { ownerId, tab, sandboxId } = parse(search);
   const homeLayoutService = useModel(HomeLayoutService);
   const messageService = useModel(MessageService);
   const nodeService = useModel(NodeService);
@@ -281,6 +219,21 @@ const EdgePage = () => {
   const isAutonomyMode = hasAccess({ type: [Platform.AUTONOMY] });
 
   useEffect(() => {
+    const legacyWorkspace: Record<string, string> = {
+      'data-compute-home': 'directory',
+      'data-compute-dev': 'dev',
+      'data-compute-algorithm': 'algorithm',
+      'data-compute-components': 'components',
+      'data-compute-visual': 'visual',
+      'data-compute-report': 'reports',
+    };
+    if (typeof tab === 'string' && legacyWorkspace[tab]) {
+      const next = new URLSearchParams(search);
+      next.set('tab', 'data-compute');
+      next.set('workspace', legacyWorkspace[tab]);
+      history.replace(`/edge?${next.toString()}`);
+      return;
+    }
     const getNodeList = async () => {
       const nodeList = await nodeService.listNode();
       if (ownerId) {
@@ -305,7 +258,11 @@ const EdgePage = () => {
   }, []);
   return (
     <HomeLayout>
-      <ManagementLayoutComponent menuItems={menuItems} defaultTabKey={'my-project'} />
+      {tab === 'data-compute' && sandboxId ? (
+        <SandboxWorkspaceComponent />
+      ) : (
+        <ManagementLayoutComponent menuItems={menuItems} defaultTabKey={'my-project'} />
+      )}
     </HomeLayout>
   );
 };

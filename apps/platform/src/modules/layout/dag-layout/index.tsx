@@ -86,6 +86,8 @@ export const DagLayout = () => {
         tab: origin || 'my-project',
       });
       if (origin === 'data-compute-visual' && projectId && sandboxId) {
+        target.set('tab', 'data-compute');
+        target.set('workspace', 'visual');
         target.set('projectId', String(projectId));
         target.set('sandboxId', String(sandboxId));
       }

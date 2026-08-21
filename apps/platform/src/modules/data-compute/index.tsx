@@ -7,6 +7,7 @@ import {
   Empty,
   Form,
   Input,
+  Layout,
   message,
   Modal,
   Result,
@@ -15,16 +16,28 @@ import {
   Space,
   Table,
   Tag,
+  Menu,
 } from 'antd';
+import {
+  ArrowLeftOutlined,
+  AppstoreOutlined,
+  BarChartOutlined,
+  CodeOutlined,
+  FundOutlined,
+  PartitionOutlined,
+  TableOutlined,
+} from '@ant-design/icons';
 import { parse } from 'query-string';
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { history, useLocation } from 'umi';
 
 import { DataDevComponent } from '@/modules/data-dev';
+import { DataAssetPreviewTable } from '@/modules/data-catalog/preview-table';
 import { MvpPage, RefreshButton, formatTime } from '@/modules/data-sandbox-mvp/common';
 import { ModelCenterComponent } from '@/modules/model-center';
 import {
   DataComputeApi,
+  DataAssetApi,
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
@@ -41,6 +54,15 @@ const useComputeQuery = () => {
 const computeUrl = (tab: string, context: DataSandboxRecord = {}) => {
   const current = new URLSearchParams(window.location.search);
   current.set('tab', tab);
+  if (context.projectId) current.set('projectId', context.projectId);
+  if (context.sandboxId) current.set('sandboxId', context.sandboxId);
+  return `/edge?${current.toString()}`;
+};
+
+const workspaceUrl = (workspace: string, context: DataSandboxRecord) => {
+  const current = new URLSearchParams(window.location.search);
+  current.set('tab', 'data-compute');
+  current.set('workspace', workspace);
   if (context.projectId) current.set('projectId', context.projectId);
   if (context.sandboxId) current.set('sandboxId', context.sandboxId);
   return `/edge?${current.toString()}`;
@@ -70,7 +92,7 @@ const ComputeContext = ({
         extra={
           <Button
             type="primary"
-            onClick={() => history.push(computeUrl('data-compute-home'))}
+            onClick={() => history.push(computeUrl('data-compute'))}
           >
             返回数据计算首页
           </Button>
@@ -100,7 +122,7 @@ const ComputeContext = ({
           context.mounts?.length || 0
         } 个`}
         action={
-          <Button onClick={() => history.push(computeUrl('data-compute-home'))}>
+          <Button onClick={() => history.push(computeUrl('data-compute'))}>
             切换沙箱
           </Button>
         }
@@ -198,7 +220,7 @@ export const DataComputeHomeComponent = () => {
                         disabled={!sandbox.usable}
                         onClick={() =>
                           history.push(
-                            computeUrl('data-compute-dev', {
+                            workspaceUrl('directory', {
                               projectId: project.project_id,
                               sandboxId: sandbox.id,
                             }),
@@ -216,7 +238,7 @@ export const DataComputeHomeComponent = () => {
                       <Button
                         onClick={() =>
                           history.push(
-                            computeUrl('data-compute-report', {
+                            workspaceUrl('reports', {
                               projectId: project.project_id,
                               sandboxId: sandbox.id,
                             }),
@@ -298,6 +320,190 @@ export const DataComputeHomeComponent = () => {
 export const SandboxDevelopmentComponent = () => (
   <ComputeContext requireUse>{() => <DataDevComponent />}</ComputeContext>
 );
+
+const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
+  const [data, setData] = useState<DataSandboxRecord>({});
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<DataSandboxRecord>();
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(responseData(await DataComputeApi.workspaceData(sandboxId), {}));
+    } catch (e: any) {
+      message.error(e.message || '加载沙箱数据目录失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [sandboxId]);
+  useEffect(() => void refresh(), [refresh]);
+  const previewAsset = async (assetId: string) => {
+    try {
+      setPreview(responseData(await DataAssetApi.preview(assetId, 10), {}));
+    } catch (e: any) {
+      message.error(e.message || '数据预览失败');
+    }
+  };
+  const mountRows = (data.mounts || []).map((row: DataSandboxRecord) => ({
+    ...row,
+    _kind: 'mount',
+  }));
+  const resultRows = (data.results || []).map((row: DataSandboxRecord) => ({
+    ...row,
+    _kind: 'result',
+  }));
+  const columns = [
+    {
+      title: '数据名称',
+      dataIndex: 'asset_name',
+      render: (_: any, r: DataSandboxRecord) =>
+        r.asset_name || r.name || r.task_name || r.asset_id,
+    },
+    {
+      title: '类型',
+      dataIndex: '_kind',
+      render: (v: string, r: DataSandboxRecord) => (
+        <Tag color={v === 'mount' ? 'blue' : 'green'}>
+          {v === 'mount' ? '初始挂载数据' : `${r.exec_type || '计算'}结果`}
+        </Tag>
+      ),
+    },
+    {
+      title: '提供方/任务',
+      render: (_: any, r: DataSandboxRecord) =>
+        r.provider_node_name || r.provider_node_id || r.task_id || '-',
+    },
+    {
+      title: '时间',
+      render: (_: any, r: DataSandboxRecord) =>
+        formatTime(r.created_at || r.finished_at || r.updated_at),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (v: string) => <Tag>{v || 'SUCCEEDED'}</Tag>,
+    },
+    {
+      title: '操作',
+      render: (_: any, r: DataSandboxRecord) => (
+        <Button
+          type="link"
+          disabled={!r.asset_id && !r.result_asset_id}
+          onClick={() => previewAsset(r.asset_id || r.result_asset_id)}
+        >
+          预览前10行
+        </Button>
+      ),
+    },
+  ];
+  return (
+    <MvpPage
+      title="沙箱数据目录"
+      description="查看沙箱挂载的初始数据及计算任务产出的结果数据"
+      extra={<RefreshButton loading={loading} onClick={refresh} />}
+    >
+      <Table
+        rowKey={(r) => `${r._kind}-${r.id || r.task_id || r.asset_id}`}
+        loading={loading}
+        dataSource={[...mountRows, ...resultRows]}
+        columns={columns}
+      />
+      <Modal
+        width={900}
+        title="数据预览（前10行）"
+        open={!!preview}
+        onCancel={() => setPreview(undefined)}
+        footer={null}
+      >
+        <DataAssetPreviewTable preview={preview} />
+      </Modal>
+    </MvpPage>
+  );
+};
+
+export const SandboxWorkspaceComponent = () => {
+  const { sandboxId, projectId } = useComputeQuery();
+  const query = parse(useLocation().search);
+  const workspace = String(query.workspace || 'directory');
+  const [context, setContext] = useState<DataSandboxRecord>();
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (sandboxId)
+      DataComputeApi.context(sandboxId)
+        .then((r) => setContext(responseData(r, {})))
+        .catch((e: any) => setError(e.message || '沙箱上下文加载失败'));
+  }, [sandboxId]);
+  if (!sandboxId) return <DataComputeHomeComponent />;
+  if (error) return <Result status="error" title={error} />;
+  if (!context) return <Card loading />;
+  const c = { sandboxId, projectId: projectId || context.project?.project_id };
+  const menu = [
+    { key: 'directory', icon: <TableOutlined />, label: '沙箱数据目录' },
+    { key: 'dev', icon: <CodeOutlined />, label: '沙箱方式开发' },
+    { key: 'algorithm', icon: <FundOutlined />, label: '自定义算法' },
+    { key: 'components', icon: <AppstoreOutlined />, label: '建模组件' },
+    { key: 'visual', icon: <PartitionOutlined />, label: '可视化建模' },
+    { key: 'reports', icon: <BarChartOutlined />, label: '模型报告信息' },
+  ];
+  const page =
+    workspace === 'dev' ? (
+      <SandboxDevelopmentComponent />
+    ) : workspace === 'algorithm' ? (
+      <CustomAlgorithmComponent />
+    ) : workspace === 'components' ? (
+      <ModelingComponentsComponent />
+    ) : workspace === 'visual' ? (
+      <VisualModelingComponent />
+    ) : workspace === 'reports' ? (
+      <ModelReportsComponent />
+    ) : (
+      <WorkspaceDataCatalog sandboxId={sandboxId} />
+    );
+  return (
+    <Layout style={{ background: 'transparent' }}>
+      <Layout.Header
+        style={{
+          background: '#fff',
+          padding: '0 16px',
+          height: 'auto',
+          lineHeight: 'normal',
+        }}
+      >
+        <Space style={{ padding: '12px 0' }} wrap>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => history.push(computeUrl('data-compute'))}
+          >
+            返回沙箱列表
+          </Button>
+          <strong>{context.sandbox?.name}</strong>
+          <span>{context.project?.name || c.projectId}</span>
+          <Tag color={context.sandbox?.status === 'RUNNING' ? 'green' : 'default'}>
+            {context.sandbox?.status}
+          </Tag>
+          <Tag>CPU {context.sandbox?.cpu_cores}</Tag>
+          <Tag>内存 {context.sandbox?.memory_gb}GB</Tag>
+          <Tag>GPU {context.sandbox?.gpu_count}</Tag>
+        </Space>
+      </Layout.Header>
+      <Layout style={{ background: 'transparent' }}>
+        <Layout.Sider width={190} theme="light">
+          <Menu
+            mode="inline"
+            selectedKeys={[workspace]}
+            items={menu}
+            onSelect={({ key }) => history.replace(workspaceUrl(key, c))}
+          />
+        </Layout.Sider>
+        <Layout.Content style={{ padding: 16 }}>{page}</Layout.Content>
+      </Layout>
+    </Layout>
+  );
+};
+
+export const DataComputeEntryComponent = () => {
+  const { sandboxId } = useComputeQuery();
+  return sandboxId ? <SandboxWorkspaceComponent /> : <DataComputeHomeComponent />;
+};
 
 export const CustomAlgorithmComponent = () => (
   <ComputeContext requireUse>{() => <ModelCenterComponent />}</ComputeContext>

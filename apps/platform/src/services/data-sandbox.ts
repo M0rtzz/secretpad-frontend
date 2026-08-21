@@ -221,6 +221,8 @@ export const DataComputeApi = {
   overview: () => computeGet<DataSandboxRecord[]>('/overview'),
   context: (sandboxId: string) =>
     computeGet<DataSandboxRecord>('/context', { sandboxId }),
+  workspaceData: (sandboxId: string) =>
+    computeGet<DataSandboxRecord>('/workspace/data', { sandboxId }),
   mountRequests: (status = '') =>
     computeGet<DataSandboxRecord[]>('/mount-requests', { status }),
   requestMount: (data: DataSandboxRecord) =>
