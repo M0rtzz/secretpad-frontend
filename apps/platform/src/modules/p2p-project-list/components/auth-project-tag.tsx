@@ -15,7 +15,7 @@ import React from 'react';
 import { useLocation } from 'umi';
 
 import { DefaultModalManager } from '@/modules/dag-modal-manager';
-import { p2pProjectDetailDrawer } from '@/modules/p2p-project-detail/project-detail-drawer';
+import { p2pProjectDetailModal } from '@/modules/p2p-project-detail/project-detail-modal';
 import { useModel } from '@/util/valtio-helper';
 import { DataAssetApi, DataSandboxRecord, responseData } from '@/services/data-sandbox';
 
@@ -127,7 +127,7 @@ export const AuthProjectTag = (props: IProps) => {
   };
 
   const handleOpenProjectDetail = () => {
-    modalManager.openModal(p2pProjectDetailDrawer.id, project);
+    modalManager.openModal(p2pProjectDetailModal.id, project);
   };
 
   return (

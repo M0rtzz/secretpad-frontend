@@ -30,9 +30,9 @@ import {
 
 import { DefaultModalManager } from '../dag-modal-manager';
 import {
-  P2pProjectDetailDrawer,
-  p2pProjectDetailDrawer,
-} from '../p2p-project-detail/project-detail-drawer';
+  P2pProjectDetailModal,
+  p2pProjectDetailModal,
+} from '../p2p-project-detail/project-detail-modal';
 import { AuthProjectTag } from '../p2p-project-list/components/auth-project-tag';
 import {
   SelectProjectState,
@@ -46,7 +46,6 @@ import {
   ProjectStatus,
   RadioGroup,
   RadioGroupState,
-  computeModeText,
 } from '../p2p-project-list/components/common';
 
 import { ProjectTypeTag } from './components/project-type-tag';
@@ -152,7 +151,7 @@ export const P2pProjectListComponent: React.FC = () => {
 
   const handleOpenProjectDetail = (item: API.ProjectVO, tabKey: string) => {
     return () => {
-      modalManager.openModal(p2pProjectDetailDrawer.id, {
+      modalManager.openModal(p2pProjectDetailModal.id, {
         ...item,
         tabKey,
       });
@@ -419,7 +418,7 @@ export const P2pProjectListComponent: React.FC = () => {
         data={editProjectData}
         onEdit={p2pProjectService.projectEdit}
       />
-      <P2pProjectDetailDrawer />
+      <P2pProjectDetailModal />
       <Modal
         title="项目挂载数据目录"
         open={assetOpen}
