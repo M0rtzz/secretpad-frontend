@@ -21,6 +21,7 @@ export const DataCatalogComponent = () => {
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [preview, setPreview] = useState<DataSandboxRecord>();
+  const [projectAsset, setProjectAsset] = useState<DataSandboxRecord>();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -111,6 +112,27 @@ export const DataCatalogComponent = () => {
             render: (v: string, row: DataSandboxRecord) => v || row.datatable_id || '-',
           },
           {
+            title: '挂载项目',
+            dataIndex: 'mounted_project_count',
+            width: 120,
+            render: (count: number, row: DataSandboxRecord) =>
+              count ? (
+                <Button type="link" onClick={() => setProjectAsset(row)}>
+                  查看（{count}）
+                </Button>
+              ) : (
+                '未挂载'
+              ),
+          },
+          {
+            title: '项目共享数据',
+            dataIndex: 'project_shared',
+            width: 130,
+            render: (shared: boolean) => (
+              <Tag color={shared ? 'blue' : 'default'}>{shared ? '是' : '否'}</Tag>
+            ),
+          },
+          {
             title: '使用控制',
             width: 210,
             render: (_: unknown, row: DataSandboxRecord) =>
@@ -170,6 +192,22 @@ export const DataCatalogComponent = () => {
         onCancel={() => setPreview(undefined)}
       >
         <DataAssetPreviewTable preview={preview} />
+      </Modal>
+      <Modal
+        title={`挂载项目 - ${projectAsset?.name || ''}`}
+        open={!!projectAsset}
+        footer={null}
+        onCancel={() => setProjectAsset(undefined)}
+      >
+        <Table
+          rowKey="project_id"
+          pagination={false}
+          dataSource={projectAsset?.mounted_projects || []}
+          columns={[
+            { title: '项目名称', dataIndex: 'name' },
+            { title: '项目 ID', dataIndex: 'project_id' },
+          ]}
+        />
       </Modal>
     </MvpPage>
   );
