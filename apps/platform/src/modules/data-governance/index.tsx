@@ -70,6 +70,7 @@ export const DataGovernanceComponent = () => {
   const [policyItem, setPolicyItem] = useState<DataSandboxRecord>();
   const [policyForm] = Form.useForm();
   const editingPolicyType = Form.useWatch('policyType', policyForm);
+  const [policyPreview, setPolicyPreview] = useState<DataSandboxRecord>();
 
   /* --------------------------------- 任务 --------------------------------- */
   const [tasks, setTasks] = useState<DataSandboxRecord[]>([]);
@@ -151,7 +152,8 @@ export const DataGovernanceComponent = () => {
     DataAssetApi.catalog({}).then((response) =>
       setSourceAssets(
         responseData(response, []).filter(
-          (asset: DataSandboxRecord) => asset.data_stage === 'RAW',
+          (asset: DataSandboxRecord) =>
+            asset.data_stage === 'RAW' && asset.owned === true,
         ),
       ),
     );
@@ -166,9 +168,10 @@ export const DataGovernanceComponent = () => {
 
   const openPolicyCreate = () => {
     setPolicyItem(undefined);
+    setPolicyPreview(undefined);
     policyForm.resetFields();
     policyForm.setFieldsValue({
-      policyType: 'SAMPLING',
+      policyType: 'SAMPLING_MASKING',
       samplingMethod: 'RANDOM',
       samplingMode: 'count',
       samplingCount: 100,
@@ -177,16 +180,60 @@ export const DataGovernanceComponent = () => {
     setPolicyOpen(true);
   };
 
-  const openPolicyEdit = (row: DataSandboxRecord) => {
+  const openPolicyEdit = async (row: DataSandboxRecord) => {
     setPolicyItem(row);
     policyForm.setFieldsValue({
       name: row.name,
       description: row.description || '',
       policyType: row.policy_type,
+      sourceAssetId: row.source_asset_id || undefined,
+      sourceNodeId: row.source_node_id || undefined,
+      sourceDatatableId: row.source_datatable_id || undefined,
       ...samplingFormValues(row.sampling_method, row.sampling_params),
       maskingRows: maskingFormRows(row.masking_columns),
     });
     setPolicyOpen(true);
+    if (row.source_node_id && row.source_datatable_id) {
+      await loadPolicySourcePreview(row.source_node_id, row.source_datatable_id);
+    } else {
+      setPolicyPreview(undefined);
+    }
+  };
+
+  const loadPolicySourcePreview = async (nodeId: string, datatableId: string) => {
+    try {
+      const sourcePreview = responseData(
+        await DataGovernanceApi.preview(nodeId, datatableId, 5),
+        {},
+      );
+      setPolicyPreview(sourcePreview);
+      const currentRules = transformMaskingRows(
+        policyForm.getFieldValue('maskingRows') || [],
+      );
+      policyForm.setFieldValue(
+        'maskingRows',
+        maskingFormRows(currentRules, governanceColumnsFromPreview(sourcePreview)),
+      );
+    } catch (error: any) {
+      setPolicyPreview(undefined);
+      message.error(error.message || '加载参考数据失败');
+    }
+  };
+
+  const onPolicySourceChange = (assetId?: string) => {
+    const asset = sourceAssets.find((item) => item.id === assetId);
+    policyForm.setFieldsValue({
+      sourceNodeId: asset?.provider_node_id,
+      sourceDatatableId: asset?.datatable_id || asset?.id,
+      maskingRows: [],
+    });
+    setPolicyPreview(undefined);
+    if (asset) {
+      void loadPolicySourcePreview(
+        asset.provider_node_id,
+        asset.datatable_id || asset.id,
+      );
+    }
   };
 
   const savePolicy = async (values: DataSandboxRecord) => {
@@ -488,6 +535,12 @@ export const DataGovernanceComponent = () => {
                       render: (v: string) => (v ? v : '-'),
                     },
                     {
+                      title: '参考数据',
+                      dataIndex: 'source_asset_id',
+                      render: (v: string) =>
+                        sourceAssets.find((asset) => asset.id === v)?.name || v || '-',
+                    },
+                    {
                       title: '脱敏列',
                       dataIndex: 'masking_columns',
                       render: (v: string) => {
@@ -730,9 +783,42 @@ export const DataGovernanceComponent = () => {
               }))}
             />
           </Form.Item>
+          <Form.Item
+            name="sourceAssetId"
+            label="参考源数据"
+            rules={[{ required: true, message: '请选择本节点源数据' }]}
+            tooltip="只读取字段与少量预览数据用于配置策略，保存策略时不会执行抽样或脱敏任务"
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择本节点源数据作为策略配置参考"
+              onChange={onPolicySourceChange}
+              options={sourceAssets.map((asset) => ({
+                value: asset.id,
+                label: asset.name,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="sourceNodeId" hidden rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="sourceDatatableId" hidden rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          {policyPreview && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={`已加载 ${policyPreview.name || policyPreview.datatableId} 的 ${
+                (policyPreview.header || []).length
+              } 个字段，仅用于配置参考`}
+            />
+          )}
           <GovernanceConfigFields
             form={policyForm}
-            allowCustomColumns
+            columns={governanceColumnsFromPreview(policyPreview)}
             enableSampling={editingPolicyType !== 'MASKING'}
             enableMasking={editingPolicyType !== 'SAMPLING'}
           />
@@ -788,7 +874,7 @@ export const DataGovernanceComponent = () => {
             <Select
               showSearch
               optionFilterProp="label"
-              placeholder="从数据目录选择源数据"
+              placeholder="从数据目录选择本节点源数据"
               onChange={(assetId) => {
                 const asset = sourceAssets.find((item) => item.id === assetId);
                 taskForm.setFieldsValue({
