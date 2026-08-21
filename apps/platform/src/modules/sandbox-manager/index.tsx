@@ -581,7 +581,7 @@ export const SandboxManagerComponent = () => {
           <Form.Item name="imageId" label="环境镜像" rules={[{ required: true }]}>
             <Select
               options={images
-                .filter((item) => item.enabled)
+                .filter((item) => item.enabled && item.id !== 'img-secretflow')
                 .map((item) => ({
                   value: item.id,
                   label: `${item.name} (${item.image_ref})`,
