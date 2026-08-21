@@ -52,8 +52,6 @@ export const DataSandboxApi = {
     post<DataSandboxRecord>('/sandboxes/action', data),
   devToken: (id: string) =>
     post<{ url: string; expiresAt: string }>('/sandboxes/dev-token', { id }),
-  snapshots: (sandboxId: string) =>
-    get<DataSandboxRecord[]>('/snapshots', { sandboxId }),
   images: () => get<DataSandboxRecord[]>('/images'),
   saveImage: (data: DataSandboxRecord) => post<DataSandboxRecord>('/images/save', data),
 

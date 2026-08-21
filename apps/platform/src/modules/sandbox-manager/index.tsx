@@ -450,14 +450,6 @@ export const SandboxManagerComponent = () => {
                 >
                   挂载数据
                 </Button>
-                <Button
-                  size="small"
-                  type="link"
-                  disabled={!creator}
-                  onClick={() => action(record.id, 'SNAPSHOT')}
-                >
-                  快照
-                </Button>
                 <Popconfirm
                   title="销毁后将回收全部配额，确定继续？"
                   okText="确定销毁"
