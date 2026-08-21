@@ -812,7 +812,7 @@ export const DataGovernanceComponent = () => {
               showIcon
               style={{ marginBottom: 16 }}
               message={`已加载 ${policyPreview.name || policyPreview.datatableId} 的 ${
-                (policyPreview.header || []).length
+                (policyPreview.header || policyPreview.columns || []).length
               } 个字段，仅用于配置参考`}
             />
           )}

@@ -209,14 +209,20 @@ export const transformMaskingRows = (rows: MaskingFormRow[] = []) =>
 export const governanceColumnsFromPreview = (
   preview?: DataSandboxRecord,
 ): GovernanceColumn[] => {
-  const header = (preview?.header || []) as string[];
-  const firstRow = ((preview?.rows || [])[0] || []) as string[];
+  const header = (preview?.header || preview?.columns || []) as string[];
+  const firstRow = ((preview?.rows || [])[0] || []) as string[] | DataSandboxRecord;
   const schema = (preview?.schema || []) as DataSandboxRecord[];
   return header.map((columnName, index) => ({
     columnName,
     columnType:
       schema.find((column) => column.colName === columnName)?.colType || undefined,
-    sampleValue: firstRow[index] == null ? '' : String(firstRow[index]),
+    sampleValue: Array.isArray(firstRow)
+      ? firstRow[index] == null
+        ? ''
+        : String(firstRow[index])
+      : firstRow[columnName] == null
+      ? ''
+      : String(firstRow[columnName]),
   }));
 };
 
