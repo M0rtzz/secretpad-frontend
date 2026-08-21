@@ -365,7 +365,20 @@ export const SandboxManagerComponent = () => {
             const creator = record.created_by === loginService?.userInfo?.name;
             return (
               <>
-                {record.status !== 'RUNNING' ? (
+                {record.status === 'STOPPING' ? (
+                  <Button disabled size="small" type="link">
+                    停止中
+                  </Button>
+                ) : record.status === 'STARTING' ? (
+                  <Button
+                    disabled={!creator}
+                    size="small"
+                    type="link"
+                    onClick={() => action(record.id, 'START')}
+                  >
+                    重试启动
+                  </Button>
+                ) : record.status !== 'RUNNING' ? (
                   <Button
                     disabled={!creator}
                     size="small"
