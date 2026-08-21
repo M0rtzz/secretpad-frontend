@@ -135,11 +135,18 @@ export const DataCatalogComponent = () => {
                   预览前10行
                 </Button>
                 <Popconfirm
-                  title="确定删除该数据？存在项目或衍生数据引用时将禁止删除。"
+                  title="确定删除该数据？若已挂载到项目，将提交项目全节点审批。"
                   onConfirm={async () => {
                     try {
-                      await DataAssetApi.deleteAsset(row.id);
-                      message.success('删除成功');
+                      const result = responseData(
+                        await DataAssetApi.deleteAsset(row.id),
+                        {},
+                      );
+                      message.success(
+                        result.status === 'PENDING_APPROVAL'
+                          ? `已提交 ${result.projectCount} 个项目的数据删除申请，请到“项目资源审核”查看进度`
+                          : '删除成功',
+                      );
                       refresh();
                     } catch (error: any) {
                       message.error(error.message || '删除失败');

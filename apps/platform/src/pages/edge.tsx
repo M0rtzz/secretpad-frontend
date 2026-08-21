@@ -182,7 +182,7 @@ const menuItems: {
         component: <SandboxManagerComponent />,
       },
       {
-        label: '沙箱资源审核',
+        label: '项目资源审核',
         key: 'sandbox-resource-review',
         icon: <AuditOutlined />,
         component: <SandboxApprovalComponent />,

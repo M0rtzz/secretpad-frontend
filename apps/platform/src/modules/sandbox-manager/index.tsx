@@ -257,7 +257,7 @@ export const SandboxManagerComponent = () => {
         }),
         {},
       );
-      message.success('销毁申请已提交，请到“沙箱资源审核”查看审批进度');
+      message.success('销毁申请已提交，请到“项目资源审核”查看审批进度');
       await refresh();
     } catch (error: unknown) {
       message.error(formatError(error, '销毁申请提交失败'));

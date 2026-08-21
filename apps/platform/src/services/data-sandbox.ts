@@ -193,7 +193,7 @@ export const DataAssetApi = {
   detail: (id: string) => assetGet<DataSandboxRecord>('/detail', { id }),
   preview: (id: string, limit = 5) =>
     assetGet<DataSandboxRecord>('/preview', { id, limit }),
-  deleteAsset: (id: string) => assetPost('/delete', { id }),
+  deleteAsset: (id: string) => assetPost<DataSandboxRecord>('/delete', { id }),
   projectAssets: (projectId: string) =>
     assetGet<DataSandboxRecord[]>('/projects/catalog', { projectId }),
   attachProjectAssets: (data: DataSandboxRecord) =>

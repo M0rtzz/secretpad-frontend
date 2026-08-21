@@ -29,6 +29,7 @@ const typeLabels: Record<string, string> = {
   DATA_CHANGE: '数据挂载变更',
   CONFIG_CHANGE: '配置变更',
   RECYCLE: '回收',
+  ASSET_DELETE: '数据删除',
 };
 
 const typeColors: Record<string, string> = {
@@ -36,6 +37,7 @@ const typeColors: Record<string, string> = {
   RENEW: 'cyan',
   SPEC_CHANGE: 'orange',
   RECYCLE: 'red',
+  ASSET_DELETE: 'red',
 };
 
 const statusLabels: Record<string, string> = {
@@ -120,8 +122,8 @@ export const SandboxApprovalComponent = () => {
 
   return (
     <MvpPage
-      title="沙箱资源审核"
-      description="查看我的申请进度，并审核其他项目节点提交的沙箱资源申请"
+      title="项目资源审核"
+      description="查看我的申请进度，并审核其他项目节点提交的沙箱或数据资源申请"
       extra={<RefreshButton loading={loading} onClick={refresh} />}
     >
       <Tabs
@@ -183,7 +185,7 @@ export const SandboxApprovalComponent = () => {
             ),
           },
           {
-            title: '沙箱',
+            title: '资源 ID',
             dataIndex: 'sandbox_id',
             render: (v: string) => (v ? v : '-'),
           },
@@ -322,7 +324,7 @@ export const SandboxApprovalComponent = () => {
       >
         <Space direction="vertical" style={{ width: '100%' }}>
           <div>申请单：{detail?.id}</div>
-          <div>沙箱：{detail?.sandbox_id || '待创建'}</div>
+          <div>资源 ID：{detail?.sandbox_id || '待创建'}</div>
           <div>所属节点 ID：{detail?.applicant_node_id || detail?.owner_id}</div>
           <div>所属项目：{detail?.project_id}</div>
           <div>提交人：{detail?.submitter}</div>
