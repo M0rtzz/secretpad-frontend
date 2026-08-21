@@ -51,11 +51,12 @@ const useComputeQuery = () => {
   };
 };
 
-const computeUrl = (tab: string, context: DataSandboxRecord = {}) => {
+const sandboxListUrl = () => {
   const current = new URLSearchParams(window.location.search);
-  current.set('tab', tab);
-  if (context.projectId) current.set('projectId', context.projectId);
-  if (context.sandboxId) current.set('sandboxId', context.sandboxId);
+  current.set('tab', 'data-compute');
+  current.delete('sandboxId');
+  current.delete('projectId');
+  current.delete('workspace');
   return `/edge?${current.toString()}`;
 };
 
@@ -90,10 +91,7 @@ const ComputeContext = ({
         status="info"
         title="请先从数据计算首页选择沙箱"
         extra={
-          <Button
-            type="primary"
-            onClick={() => history.push(computeUrl('data-compute'))}
-          >
+          <Button type="primary" onClick={() => history.push(sandboxListUrl())}>
             返回数据计算首页
           </Button>
         }
@@ -122,9 +120,7 @@ const ComputeContext = ({
           context.mounts?.length || 0
         } 个`}
         action={
-          <Button onClick={() => history.push(computeUrl('data-compute'))}>
-            切换沙箱
-          </Button>
+          <Button onClick={() => history.push(sandboxListUrl())}>切换沙箱</Button>
         }
       />
       {children(context)}
@@ -471,7 +467,7 @@ export const SandboxWorkspaceComponent = () => {
         <Space style={{ padding: '12px 0' }} wrap>
           <Button
             icon={<ArrowLeftOutlined />}
-            onClick={() => history.push(computeUrl('data-compute'))}
+            onClick={() => history.push(sandboxListUrl())}
           >
             返回沙箱列表
           </Button>
