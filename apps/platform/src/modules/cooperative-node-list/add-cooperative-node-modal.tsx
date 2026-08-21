@@ -14,6 +14,11 @@ import { CooperativeNodeService } from './cooperative-node.service';
 import styles from './index.less';
 import { SelectBefore, getProtocol, replaceProtocol } from './slectBefore';
 
+const withProtocol = (address?: string) => {
+  if (!address) return '';
+  return /^https?:\/\//.test(address) ? address : `http://${address}`;
+};
+
 export const AddCooperativeNodeDrawer = ({
   open,
   onClose,
@@ -25,12 +30,10 @@ export const AddCooperativeNodeDrawer = ({
 }) => {
   const service = useModel(CooperativeNodeService);
 
-  const { computeNodeList, computeNodeLoading, autonomyNodeList } = service;
+  const { computeNodeList, computeNodeLoading } = service;
   const [messageApi, contextHolder] = message.useMessage();
   const [submittable, setSubmittable] = useState(false);
-  const [serviceType, setServiceType] = useState('http://');
   const [cooperativeServiceType, setCooperativeServiceType] = useState('http://');
-  const [instInfo, setInstInfo] = useState<{ instId?: string; instName?: string }>({});
   const isAutonomyMode = hasAccess({ type: [Platform.AUTONOMY] });
 
   const [form] = Form.useForm();
@@ -44,22 +47,16 @@ export const AddCooperativeNodeDrawer = ({
   const { ownerId } = parse(search);
 
   useEffect(() => {
-    if (service.nodeInfo.netAddress) {
-      setServiceType(getProtocol(service.nodeInfo.netAddress));
-      form.setFieldValue(
-        ['selfNode', 'nodeAddress'],
-        replaceProtocol(service.nodeInfo.netAddress),
-      );
-    }
-  }, [service.nodeInfo]);
-
-  useEffect(() => {
     if (open) {
       if (!isAutonomyMode) {
         service.getComputeNodeList();
       }
+      const localNodeId = service.nodeService.currentNode?.nodeId || ownerId;
+      if (localNodeId) {
+        service.getNodeInfo(localNodeId);
+      }
     }
-  }, [open]);
+  }, [open, ownerId, isAutonomyMode]);
 
   useEffect(() => {
     form.validateFields({ validateOnly: true }).then(
@@ -87,10 +84,6 @@ export const AddCooperativeNodeDrawer = ({
     }
   }, [computeNodeId]);
 
-  const handleNodeIdChange = (value: string) => {
-    service.getNodeInfo(value);
-  };
-
   const handleOk = () => {
     form.validateFields().then(async (value) => {
       if (isAutonomyMode) {
@@ -100,11 +93,10 @@ export const AddCooperativeNodeDrawer = ({
           dstNodeId: value.cooperativeNode.computeNodeId,
           name: value.cooperativeNode.computeNodeName,
           certText: value.cooperativeNode.cert,
-          srcNetAddress: `${serviceType}${value.selfNode.nodeAddress}`,
           dstNetAddress: `${cooperativeServiceType}${value.cooperativeNode.nodeAddress}`,
           dstInstId: value.cooperativeNode.instId,
           dstInstName: value.cooperativeNode.instName,
-          srcNodeId: value.selfNode.nodeId,
+          srcNodeId: service.nodeInfo.nodeId || ownerId,
         });
         if (status && status.code !== 0) {
           message.error(status.msg);
@@ -120,7 +112,7 @@ export const AddCooperativeNodeDrawer = ({
           voteConfig: {
             srcNodeId: ownerId as string,
             desNodeId: value.cooperativeNode.computeNodeId,
-            srcNodeAddr: `${serviceType}${value.selfNode.nodeAddress}`,
+            srcNodeAddr: withProtocol(service.nodeInfo.netAddress),
             desNodeAddr: `${cooperativeServiceType}${value.cooperativeNode.nodeAddress}`,
             isSingle: false,
             // isSingle: value.cooperativeNode.routeType === 'FullDuplex' ? false : true,
@@ -151,9 +143,7 @@ export const AddCooperativeNodeDrawer = ({
 
   const handleClose = () => {
     form.resetFields();
-    setServiceType('http://');
     setCooperativeServiceType('http://');
-    setInstInfo({});
     onClose();
   };
 
@@ -191,10 +181,6 @@ export const AddCooperativeNodeDrawer = ({
       ) {
         const protocol = getProtocol(jsonObj.dstNetAddress);
         setCooperativeServiceType(protocol);
-        setInstInfo({
-          instId: jsonObj.instId,
-          instName: jsonObj.instName,
-        });
         form.setFieldsValue({
           cooperativeNode: {
             cert: jsonObj.certText,
@@ -419,51 +405,18 @@ export const AddCooperativeNodeDrawer = ({
               </Radio.Group>
             </Form.Item> */}
           </div>
-          <div className={styles.subTitle}>本方节点</div>
-          <div className={styles.formGroup}>
-            {isAutonomyMode && (
-              <Form.Item
-                name={['selfNode', 'nodeId']}
-                label={'节点选择'}
-                rules={[{ required: true, message: '请选择本方节点' }]}
-              >
-                <Select
-                  placeholder="请选择"
-                  options={autonomyNodeList
-                    .filter((item) => item.nodeStatus === NodeState.READY)
-                    .map((item) => ({
-                      label: item.nodeName,
-                      value: item.nodeId,
-                    }))}
-                  onChange={(value: string) => handleNodeIdChange(value)}
-                />
-              </Form.Item>
-            )}
-            <Form.Item
-              name={['selfNode', 'nodeAddress']}
-              label={'节点通讯地址'}
-              rules={[
-                { required: true, message: '请输入通讯地址' },
-                {
-                  pattern:
-                    /^(?!.*\s)(.{1,50}):([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$/,
-                  message: '请输入正确的通讯地址',
-                },
-              ]}
-              initialValue={
-                isAutonomyMode
-                  ? undefined
-                  : replaceProtocol(service.nodeInfo.netAddress)
-              }
-            >
-              <Input
-                addonBefore={
-                  <SelectBefore serviceType={serviceType} onChange={setServiceType} />
-                }
-                placeholder="请输入通讯地址"
-              ></Input>
-            </Form.Item>
-          </div>
+          <Alert
+            type="info"
+            showIcon
+            message={`本方节点将自动使用当前节点：${
+              service.nodeInfo.nodeName ||
+              service.nodeInfo.nodeId ||
+              ownerId ||
+              '解析中'
+            }`}
+            description="本方节点 ID 和通讯地址由系统根据当前登录节点自动解析，无需手动选择或填写。"
+            style={{ marginTop: 16 }}
+          />
         </Form>
       </Drawer>
       {contextHolder}
