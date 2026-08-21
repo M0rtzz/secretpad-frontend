@@ -206,11 +206,13 @@ export const DataCatalogComponent = () => {
                 ),
             },
             {
-              title: '项目共享数据',
-              dataIndex: 'project_shared',
+              title: '数据归属',
+              dataIndex: 'owned',
               width: 130,
-              render: (shared: boolean) => (
-                <Tag color={shared ? 'blue' : 'default'}>{shared ? '是' : '否'}</Tag>
+              render: (owned: boolean) => (
+                <Tag color={owned ? 'green' : 'default'}>
+                  {owned ? '本地数据' : '外部共享'}
+                </Tag>
               ),
             },
             {
@@ -239,29 +241,31 @@ export const DataCatalogComponent = () => {
                   >
                     预览前10行
                   </Button>
-                  <Popconfirm
-                    title="确定删除该数据？若已挂载到项目，将提交项目全节点审批。"
-                    onConfirm={async () => {
-                      try {
-                        const result = responseData(
-                          await DataAssetApi.deleteAsset(row.id),
-                          {},
-                        );
-                        message.success(
-                          result.status === 'PENDING_APPROVAL'
-                            ? `已提交 ${result.projectCount} 个项目的数据删除申请，请到“项目资源审核”查看进度`
-                            : '删除成功',
-                        );
-                        refresh();
-                      } catch (error: any) {
-                        message.error(error.message || '删除失败');
-                      }
-                    }}
-                  >
-                    <Button danger type="link">
-                      删除
-                    </Button>
-                  </Popconfirm>
+                  {row.owned && (
+                    <Popconfirm
+                      title="确定删除该数据？若已挂载到项目，将提交项目全节点审批。"
+                      onConfirm={async () => {
+                        try {
+                          const result = responseData(
+                            await DataAssetApi.deleteAsset(row.id),
+                            {},
+                          );
+                          message.success(
+                            result.status === 'PENDING_APPROVAL'
+                              ? `已提交 ${result.projectCount} 个项目的数据删除申请，请到“项目资源审核”查看进度`
+                              : '删除成功',
+                          );
+                          refresh();
+                        } catch (error: any) {
+                          message.error(error.message || '删除失败');
+                        }
+                      }}
+                    >
+                      <Button danger type="link">
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  )}
                 </Space>
               ),
             },
