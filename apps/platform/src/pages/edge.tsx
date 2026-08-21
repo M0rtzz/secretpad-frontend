@@ -19,16 +19,12 @@ import { parse } from 'query-string';
 import { lazy, useEffect } from 'react';
 import { useLocation } from 'umi';
 
-import { ReactComponent as DataSource } from '@/assets/data-source.svg';
 import { ReactComponent as DataManager } from '@/assets/jiaochabiao.svg';
 import { ReactComponent as CooperativeNode } from '@/assets/join-node.svg';
 import { ReactComponent as projectManager } from '@/assets/project-manager.svg';
 import { ReactComponent as ResultManager } from '@/assets/resultmanager.svg';
 import { ReactComponent as Workbench } from '@/assets/workbench.svg';
 import { CooperativeNodeListComponent } from '@/modules/cooperative-node-list';
-import { DataManagerComponent } from '@/modules/data-manager/data-manager.view';
-import { DataSourceListComponent } from '@/modules/data-source-list';
-import { DataUploadComponent } from '@/modules/data-upload';
 import { DataCatalogComponent } from '@/modules/data-catalog';
 import { UsageControlComponent } from '@/modules/usage-control';
 import { HomeLayout } from '@/modules/layout/home-layout';
@@ -144,12 +140,6 @@ const menuItems: {
     icon: <Icon component={DataManager} />,
     key: 'data-management',
     children: [
-      {
-        label: '数据上传',
-        key: 'data-upload',
-        icon: <Icon component={DataSource} />,
-        component: <DataUploadComponent />,
-      },
       {
         label: '数据目录',
         key: 'data-catalog',
