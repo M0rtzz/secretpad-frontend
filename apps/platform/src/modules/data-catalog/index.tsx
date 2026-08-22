@@ -413,24 +413,26 @@ export const DataCatalogComponent = () => {
                         onChange={(value) =>
                           databaseForm.setFieldValue(
                             'port',
-                            value === 'POSTGRESQL' ? 5432 : 3306,
+                            value === 'POSTGRESQL' || value === 'OPENGAUSS'
+                              ? 5432
+                              : 3306,
                           )
                         }
                         options={[
                           { value: 'MYSQL', label: 'MySQL' },
                           { value: 'POSTGRESQL', label: 'PostgreSQL' },
                           { value: 'OCEANBASE', label: 'OceanBase' },
-                          { value: 'POLARDB', label: 'PolarDB' },
+                          { value: 'OPENGAUSS', label: 'openGauss' },
                         ]}
                       />
                     </Form.Item>
-                    {databaseType === 'POLARDB' && (
+                    {databaseType === 'OCEANBASE' && (
                       <Form.Item name="protocol" label="兼容协议">
                         <Select
                           style={{ width: 160 }}
                           options={[
                             { value: 'MYSQL', label: 'MySQL' },
-                            { value: 'POSTGRESQL', label: 'PostgreSQL' },
+                            { value: 'ORACLE', label: 'Oracle' },
                           ]}
                         />
                       </Form.Item>
