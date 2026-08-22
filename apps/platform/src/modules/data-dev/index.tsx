@@ -35,18 +35,21 @@ const artifactTypeLabels: Record<string, string> = {
   JAR: 'JAR 制品',
   SQL: 'SQL 脚本',
   PYTHON: 'Python 函数',
+  FUNCTION: '函数(UDF)',
 };
 
 const artifactTypeColors: Record<string, string> = {
   JAR: 'geekblue',
   SQL: 'blue',
   PYTHON: 'purple',
+  FUNCTION: 'magenta',
 };
 
 const execTypeLabels: Record<string, string> = {
   JAR: 'JAR',
   SQL: 'SQL',
   PYTHON: 'Python',
+  FUNCTION: '函数',
 };
 
 const runModeLabels: Record<string, string> = {
@@ -334,7 +337,7 @@ export const DataDevComponent = () => {
     }
   };
 
-  /** SQL/PYTHON 脚本版本：新建/编辑 → 保存为新版本（版本自增，不可变）。 */
+  /** SQL/PYTHON/FUNCTION 脚本版本：新建/编辑 → 保存为新版本（版本自增，不可变）。 */
   const openScriptVersion = (row: DataSandboxRecord) => {
     setVersionArtifact(row);
     setVersionContent('');
@@ -343,6 +346,9 @@ export const DataDevComponent = () => {
       paramsSchema: '[]',
       defaultParams: '{}',
       dependencyNames: [],
+      functionName: '',
+      functionNargs: undefined,
+      sqlTemplate: '',
     });
     setVersionOpen(true);
   };
@@ -487,6 +493,28 @@ export const DataDevComponent = () => {
           '    w.writeheader()\n' +
           '    w.writerows(rows)\n',
       });
+    } else if (exec === 'FUNCTION' && !taskForm.getFieldValue('sql')) {
+      taskForm.setFieldsValue({
+        functionName: 'risk_score',
+        functionNargs: 2,
+        functionSource:
+          'def risk_score(balance, trans_amount):\n' +
+          '    """资金风险评分：余额越低、单笔交易越大 → 风险越高（3=高/2=中/1=低）"""\n' +
+          '    score = 1\n' +
+          '    if balance < 20000:\n' +
+          '        score += 1\n' +
+          '    if trans_amount > 3000:\n' +
+          '        score += 1\n' +
+          '    if trans_amount > 5000 or balance < 8000:\n' +
+          '        score += 1\n' +
+          '    return min(score, 3)\n',
+        sql:
+          'SELECT account_no, branch, category, card_type, balance, trans_amount,\n' +
+          '       risk_score(balance, trans_amount) AS risk_level,\n' +
+          "       CASE WHEN trans_amount > 3000 THEN 'Y' ELSE 'N' END AS big_txn\n" +
+          `FROM ${sourceTable}\n` +
+          'ORDER BY risk_level DESC, trans_amount DESC;\n',
+      });
     }
   };
 
@@ -504,8 +532,9 @@ export const DataDevComponent = () => {
       }
       let payload: DataSandboxRecord = rest;
       // 内联脚本 + 「保存任务」= 先落制品+版本，再按制品引用提交
-      if (saveAs && artifactName && (rest.sql || rest.script)) {
-        const contentText = rest.sql || rest.script;
+      if (saveAs && artifactName && (rest.sql || rest.script || rest.functionSource)) {
+        const isFunction = rest.execType === 'FUNCTION';
+        const contentText = isFunction ? rest.functionSource : rest.sql || rest.script;
         const existing = allArtifacts.find(
           (a) => a.name === artifactName && a.type === rest.execType,
         );
@@ -529,12 +558,24 @@ export const DataDevComponent = () => {
             paramsSchema: values.paramsSchema || '[]',
             defaultParams: values.defaultParams || '{}',
             dependencyNames: rest.dependencyNames || [],
+            ...(isFunction
+              ? {
+                  functionName: rest.functionName,
+                  functionNargs: rest.functionNargs,
+                  sqlTemplate: rest.sql,
+                }
+              : {}),
           }),
           {},
         );
         payload = { ...rest, artifactId, version: version.version };
         delete payload.sql;
         delete payload.script;
+        if (isFunction) {
+          delete payload.functionSource;
+          delete payload.functionName;
+          delete payload.functionNargs;
+        }
       }
       if (sandboxId) {
         // 沙箱表源：走沙箱 SQLite 计算契约（源表/输出表/JDBC 注入）
@@ -1218,7 +1259,13 @@ export const DataDevComponent = () => {
       >
         <Form form={scriptForm} layout="vertical" onFinish={saveScriptVersion}>
           <Form.Item
-            label={versionArtifact?.type === 'PYTHON' ? 'Python 函数' : 'SQL 脚本'}
+            label={
+              versionArtifact?.type === 'PYTHON'
+                ? 'Python 函数'
+                : versionArtifact?.type === 'FUNCTION'
+                ? '函数源码'
+                : 'SQL 脚本'
+            }
             required
           >
             <Input.TextArea
@@ -1229,10 +1276,43 @@ export const DataDevComponent = () => {
               placeholder={
                 versionArtifact?.type === 'PYTHON'
                   ? 'import argparse, csv\nap = argparse.ArgumentParser()\n...'
+                  : versionArtifact?.type === 'FUNCTION'
+                  ? 'def risk_score(balance, trans_amount):\n    ...'
                   : 'SELECT category, count(*) c FROM src GROUP BY category'
               }
             />
           </Form.Item>
+          {versionArtifact?.type === 'FUNCTION' && (
+            <>
+              <Space size="large" wrap style={{ width: '100%' }}>
+                <Form.Item
+                  name="functionName"
+                  label="函数名"
+                  rules={[{ required: true }]}
+                >
+                  <Input placeholder="例如 risk_score" style={{ width: 200 }} />
+                </Form.Item>
+                <Form.Item
+                  name="functionNargs"
+                  label="参数个数"
+                  rules={[{ required: true }]}
+                >
+                  <InputNumber min={0} max={127} style={{ width: 110 }} />
+                </Form.Item>
+              </Space>
+              <Form.Item
+                name="sqlTemplate"
+                label="调用函数 SQL"
+                rules={[{ required: true }]}
+              >
+                <Input.TextArea
+                  rows={4}
+                  style={{ fontFamily: 'monospace' }}
+                  placeholder="SELECT account_no, risk_score(balance, trans_amount) AS risk_level FROM <table>"
+                />
+              </Form.Item>
+            </>
+          )}
           <Space style={{ width: '100%' }} align="start">
             <Form.Item
               name="paramsSchema"
@@ -1252,7 +1332,8 @@ export const DataDevComponent = () => {
               <Input.TextArea rows={3} placeholder='{"filter":"A"}' />
             </Form.Item>
           </Space>
-          {versionArtifact?.type === 'PYTHON' && (
+          {(versionArtifact?.type === 'PYTHON' ||
+            versionArtifact?.type === 'FUNCTION') && (
             <Form.Item name="dependencyNames" label="依赖库白名单">
               <Select
                 mode="multiple"
@@ -1519,7 +1600,7 @@ export const DataDevComponent = () => {
               <Alert
                 type="info"
                 showIcon
-                message="JAR 运行契约：源表经 CSV base64 通道输入；沙箱模式额外注入 --jdbc-url/--input-table/--output-table。结果 CSV 写入 --output 文件（或 stdout）；长驻服务超时终止判失败。"
+                message="JAR 运行契约：沙箱 DB 快照送 pod，经 --jdbc-url jdbc:sqlite:/workspace/sandbox_data.db 直连真实表名（另注入 --input-table/--output-table 与输入 CSV）；结果 CSV 写入 --output（或 stdout）；长驻服务超时终止判失败。"
               />
             </>
           ) : (
@@ -1563,17 +1644,73 @@ export const DataDevComponent = () => {
                 </Space>
               ) : (
                 <>
+                  {taskExec === 'FUNCTION' && (
+                    <>
+                      <Space size="large" wrap style={{ width: '100%' }}>
+                        <Form.Item
+                          name="functionName"
+                          label="函数名"
+                          rules={[
+                            { required: true },
+                            {
+                              pattern: /^[a-zA-Z_][a-zA-Z0-9_]*$/,
+                              message: '需为合法 Python 标识符',
+                            },
+                          ]}
+                        >
+                          <Input placeholder="例如 risk_score" style={{ width: 200 }} />
+                        </Form.Item>
+                        <Form.Item
+                          name="functionNargs"
+                          label="参数个数"
+                          rules={[{ required: true }]}
+                        >
+                          <InputNumber min={0} max={127} style={{ width: 110 }} />
+                        </Form.Item>
+                      </Space>
+                      <Form.Item
+                        name="functionSource"
+                        label="函数源码"
+                        rules={[{ required: true }]}
+                      >
+                        <Input.TextArea
+                          rows={8}
+                          style={{ fontFamily: 'monospace' }}
+                          placeholder={
+                            'def risk_score(balance, trans_amount):\n' +
+                            '    score = 1\n' +
+                            '    ...\n' +
+                            '    return min(score, 3)'
+                          }
+                        />
+                      </Form.Item>
+                    </>
+                  )}
                   <Form.Item
-                    name={taskExec === 'SQL' ? 'sql' : 'script'}
-                    label={taskExec === 'SQL' ? 'SQL 脚本' : 'Python 函数'}
+                    name={
+                      taskExec === 'FUNCTION'
+                        ? 'sql'
+                        : taskExec === 'SQL'
+                        ? 'sql'
+                        : 'script'
+                    }
+                    label={
+                      taskExec === 'SQL'
+                        ? 'SQL 脚本'
+                        : taskExec === 'FUNCTION'
+                        ? '调用函数 SQL'
+                        : 'Python 函数'
+                    }
                     rules={[{ required: true }]}
                   >
                     <Input.TextArea
-                      rows={8}
+                      rows={taskExec === 'FUNCTION' ? 5 : 8}
                       style={{ fontFamily: 'monospace' }}
                       placeholder={
                         taskExec === 'SQL'
                           ? 'SELECT category, count(*) c FROM src GROUP BY category'
+                          : taskExec === 'FUNCTION'
+                          ? 'SELECT account_no, risk_score(balance, trans_amount) AS risk_level FROM <table>'
                           : 'import argparse, csv\nap = argparse.ArgumentParser()\n...'
                       }
                     />
@@ -1589,6 +1726,13 @@ export const DataDevComponent = () => {
                           .map((d) => ({ value: d.name, label: d.name }))}
                       />
                     </Form.Item>
+                  )}
+                  {taskExec === 'FUNCTION' && (
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="函数执行契约：沙箱 DB 快照送 python-runner pod，包装器 create_function 注册 UDF 后执行下方 SQL；结果 CSV 回填。函数体顶层 import 受依赖白名单校验。"
+                    />
                   )}
                   <Form.Item label="保存任务">
                     <Space direction="vertical" style={{ width: '100%' }}>
