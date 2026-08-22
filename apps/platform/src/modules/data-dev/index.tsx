@@ -115,7 +115,8 @@ const renderPreviewTable = (preview: DataSandboxRecord) => {
 export const DataDevComponent = () => {
   const computeQuery = parse(useLocation().search);
   const sandboxId = String(computeQuery.sandboxId || '');
-  const [sandboxMounts, setSandboxMounts] = useState<DataSandboxRecord[]>([]);
+  /* 沙箱权威库表（sandboxDbDirectory → 提交任务源表下拉） */
+  const [sandboxTables, setSandboxTables] = useState<DataSandboxRecord[]>([]);
   /* --------------------------------- 制品 --------------------------------- */
   const [artifacts, setArtifacts] = useState<DataSandboxRecord[]>([]);
   const [artifactLoading, setArtifactLoading] = useState(false);
@@ -255,18 +256,16 @@ export const DataDevComponent = () => {
   }, [refreshDeps]);
 
   useEffect(() => {
-    if (!sandboxId) return;
-    DataComputeApi.context(sandboxId)
-      .then((res) => setSandboxMounts(responseData(res, {}).mounts || []))
-      .catch((error: any) => message.error(error.message || '加载沙箱挂载数据失败'));
-  }, [sandboxId]);
-
-  useEffect(() => {
     if (taskOpen) {
       DataDevApi.artifacts().then((res) => setAllArtifacts(responseData(res, [])));
       DataDevApi.dependencies({ enabled: '1' }).then((res) =>
         setDeps(responseData(res, [])),
       );
+      if (sandboxId) {
+        DataComputeApi.sandboxDbDirectory(sandboxId)
+          .then((res) => setSandboxTables(responseData(res, {}).items || []))
+          .catch((error: any) => message.error(error.message || '加载沙箱表失败'));
+      }
     }
   }, [taskOpen]);
 
@@ -438,24 +437,56 @@ export const DataDevComponent = () => {
     setTaskOpen(true);
   };
 
-  const previewSource = async () => {
-    const { mountId, limit } = taskForm.getFieldsValue();
-    const mount = sandboxMounts.find((item) => item.id === mountId);
-    const nodeId = mount?.processor_node_id || mount?.provider_node_id;
-    const datatableId = mount?.datatable_id;
-    if (!nodeId || !datatableId) {
-      message.warning('请选择包含可计算数据表的沙箱挂载数据');
+  /** 沙箱表预览：data-dev 沙箱表源（schema → header，rows 数组保持不变）。 */
+  const previewSandboxTable = async () => {
+    const { sourceTable, limit } = taskForm.getFieldsValue();
+    if (!sandboxId || !sourceTable) {
+      message.warning('请先选择沙箱表');
       return;
     }
     try {
-      setPreview(
-        responseData(
-          await DataDevApi.previewSource(nodeId, datatableId, limit || 20),
-          {},
-        ),
+      const raw = responseData(
+        await DataDevApi.sandboxPreview(sandboxId, sourceTable, limit || 10),
+        {},
       );
+      const schema: DataSandboxRecord[] = Array.isArray(raw.schema) ? raw.schema : [];
+      setPreview({
+        header: schema.map((c) => String(c.name)),
+        rows: raw.rows || [],
+        sourceRows: raw.totalRows,
+      });
     } catch (error: any) {
       message.error(error.message || '预览失败');
+    }
+  };
+
+  /** 自适应模板默认值：选中沙箱表后按 execType 预填脚本骨架（仅当文本框为空）。 */
+  const onSourceTableChange = (sourceTable: string) => {
+    const exec = taskForm.getFieldValue('execType');
+    if (exec === 'SQL' && !taskForm.getFieldValue('sql')) {
+      taskForm.setFieldsValue({ sql: `SELECT * FROM ${sourceTable} LIMIT 10;` });
+    } else if (exec === 'PYTHON' && !taskForm.getFieldValue('script')) {
+      taskForm.setFieldsValue({
+        script:
+          'import argparse, csv\n' +
+          '\n' +
+          'ap = argparse.ArgumentParser()\n' +
+          "ap.add_argument('--input', required=True, help='input CSV path')\n" +
+          "ap.add_argument('--output', required=True, help='output CSV path')\n" +
+          "ap.add_argument('--params', default='{}')\n" +
+          'args = ap.parse_args()\n' +
+          '\n' +
+          "with open(args.input, 'r', encoding='utf-8') as f:\n" +
+          '    rows = list(csv.DictReader(f))\n' +
+          '\n' +
+          '# TODO: 基于 rows 实现你的计算逻辑\n' +
+          "print('输入行数:', len(rows))\n" +
+          '\n' +
+          "with open(args.output, 'w', newline='', encoding='utf-8') as f:\n" +
+          '    w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else [])\n' +
+          '    w.writeheader()\n' +
+          '    w.writerows(rows)\n',
+      });
     }
   };
 
@@ -505,7 +536,12 @@ export const DataDevComponent = () => {
         delete payload.sql;
         delete payload.script;
       }
-      responseData(await DataDevApi.submitTask(payload), {});
+      if (sandboxId) {
+        // 沙箱表源：走沙箱 SQLite 计算契约（源表/输出表/JDBC 注入）
+        responseData(await DataDevApi.submitSandboxTask({ ...payload, sandboxId }), {});
+      } else {
+        responseData(await DataDevApi.submitTask(payload), {});
+      }
       message.success('任务已提交');
       setTaskOpen(false);
       taskForm.resetFields();
@@ -1426,18 +1462,18 @@ export const DataDevComponent = () => {
             </Form.Item>
           </Space>
           <Space size="large" wrap style={{ width: '100%' }}>
-            <Form.Item name="mountId" label="沙箱可用数据" rules={[{ required: true }]}>
+            <Form.Item name="sourceTable" label="沙箱表" rules={[{ required: true }]}>
               <Select
-                style={{ width: 320 }}
+                style={{ width: 360 }}
                 showSearch
                 optionFilterProp="label"
-                placeholder="选择已挂载的抽样脱敏数据"
-                options={sandboxMounts.map((item) => ({
-                  value: item.id,
-                  label: `${item.asset_name}（${
-                    item.provider_node_name || item.provider_node_id
-                  }）`,
-                  disabled: item.status !== 'READY' || !item.datatable_id,
+                placeholder="选择沙箱 sandbox_data.db 中的表"
+                onChange={onSourceTableChange}
+                options={sandboxTables.map((item) => ({
+                  value: item.tableName,
+                  label: `${item.tableName}（${item.name || item.tableName}·${
+                    item.kind === 'RESULT' ? '计算结果' : '挂载数据'
+                  }${item.source === 'SYNCED' ? '·跨节点' : ''}）`,
                 }))}
               />
             </Form.Item>
@@ -1446,7 +1482,7 @@ export const DataDevComponent = () => {
                 <Form.Item name="limit" noStyle>
                   <InputNumber min={1} max={100} style={{ width: 80 }} />
                 </Form.Item>
-                <Button onClick={previewSource}>预览前 N 行</Button>
+                <Button onClick={previewSandboxTable}>预览前 N 行</Button>
               </Space>
             </Form.Item>
           </Space>
@@ -1483,7 +1519,7 @@ export const DataDevComponent = () => {
               <Alert
                 type="info"
                 showIcon
-                message="JAR 运行契约：CLI 程序将结果 CSV 写入 --output 文件（或 stdout）；长驻服务超时终止判失败。"
+                message="JAR 运行契约：源表经 CSV base64 通道输入；沙箱模式额外注入 --jdbc-url/--input-table/--output-table。结果 CSV 写入 --output 文件（或 stdout）；长驻服务超时终止判失败。"
               />
             </>
           ) : (
@@ -1571,9 +1607,23 @@ export const DataDevComponent = () => {
               )}
             </>
           )}
-          <Form.Item name="params" label="运行参数 (JSON)">
-            <Input.TextArea rows={2} placeholder='{"filter":"A"}' />
-          </Form.Item>
+          <Space size="large" wrap style={{ width: '100%' }} align="start">
+            <Form.Item
+              name="params"
+              label="运行参数 (JSON)"
+              style={{ minWidth: 380, marginBottom: 0 }}
+            >
+              <Input.TextArea rows={2} placeholder='{"filter":"A"}' />
+            </Form.Item>
+            <Form.Item
+              name="outputTable"
+              label="输出表名（可选）"
+              tooltip="JAR/Python 结果表名；留空自动 result_<任务id>"
+              style={{ marginBottom: 0 }}
+            >
+              <Input placeholder="例如 result_agg" style={{ width: 220 }} />
+            </Form.Item>
+          </Space>
         </Form>
       </Modal>
 

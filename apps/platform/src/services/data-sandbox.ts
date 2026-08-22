@@ -237,6 +237,27 @@ export const DataComputeApi = {
     computePost<DataSandboxRecord>('/canvases/save', data),
   reports: (sandboxId: string, type = '') =>
     computeGet<DataSandboxRecord[]>('/reports', { sandboxId, type }),
+  // 沙箱权威库数据目录（Stage 3）：仅沙箱创建人
+  sandboxDbDirectory: (sandboxId: string) =>
+    computeGet<DataSandboxRecord>('/sandbox-db/directory', { sandboxId }),
+  sandboxDbPreview: (sandboxId: string, tableName: string, limit = 20) =>
+    computeGet<DataSandboxRecord>('/sandbox-db/table-preview', {
+      sandboxId,
+      tableName,
+      limit,
+    }),
+  sandboxDbDownload: async (sandboxId: string) => {
+    const query = new URLSearchParams({ sandboxId });
+    const response = await fetch(`${computeBase}/sandbox-db/download?${query}`, {
+      credentials: 'include',
+      headers: {
+        'User-Token': localStorage.getItem('User-Token') || '',
+        'Trace-Id': `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      },
+    });
+    if (!response.ok) throw new Error(`沙箱数据库下载失败: HTTP ${response.status}`);
+    return response.blob();
+  },
 };
 
 // Z-04 数据治理（抽样/脱敏）：独立前缀 /api/v1alpha1/data-governance
@@ -383,6 +404,14 @@ export const DataDevApi = {
   taskDetail: (id: string) => devGet<DataSandboxRecord>('/tasks/detail', { id }),
   submitTask: (data: DataSandboxRecord) =>
     devPost<DataSandboxRecord>('/tasks/submit', data),
+  submitSandboxTask: (data: DataSandboxRecord) =>
+    devPost<DataSandboxRecord>('/tasks/submit-sandbox', data),
+  sandboxPreview: (sandboxId: string, tableName: string, limit = 10) =>
+    devGet<DataSandboxRecord>('/tasks/sandbox-preview', {
+      sandboxId,
+      tableName,
+      limit,
+    }),
   cancelTask: (id: string) => devPost('/tasks/cancel', { id }),
   retryTask: (id: string) => devPost<DataSandboxRecord>('/tasks/retry', { id }),
   previewSource: (nodeId: string, datatableId: string, limit = 20) =>

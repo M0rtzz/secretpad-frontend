@@ -16,6 +16,7 @@ import {
   Space,
   Table,
   Tag,
+  Typography,
   Menu,
 } from 'antd';
 import {
@@ -37,7 +38,6 @@ import { MvpPage, RefreshButton, formatTime } from '@/modules/data-sandbox-mvp/c
 import { ModelCenterComponent } from '@/modules/model-center';
 import {
   DataComputeApi,
-  DataAssetApi,
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
@@ -324,7 +324,7 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setData(responseData(await DataComputeApi.workspaceData(sandboxId), {}));
+      setData(responseData(await DataComputeApi.sandboxDbDirectory(sandboxId), {}));
     } catch (e: any) {
       message.error(e.message || '加载沙箱数据目录失败');
     } finally {
@@ -332,61 +332,81 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
     }
   }, [sandboxId]);
   useEffect(() => void refresh(), [refresh]);
-  const previewAsset = async (assetId: string) => {
+  const previewTable = async (tableName: string) => {
     try {
-      setPreview(responseData(await DataAssetApi.preview(assetId, 10), {}));
+      const raw = responseData(
+        await DataComputeApi.sandboxDbPreview(sandboxId, tableName, 20),
+        {},
+      );
+      const schema: DataSandboxRecord[] = Array.isArray(raw.schema) ? raw.schema : [];
+      const names: string[] = schema.map((c) => String(c.name));
+      const rows: DataSandboxRecord[] = (raw.rows || []).map((row: string[]) => {
+        const obj: DataSandboxRecord = {};
+        names.forEach((n, i) => {
+          obj[n] = row[i];
+        });
+        return obj;
+      });
+      setPreview({
+        tableName: raw.tableName || tableName,
+        columns: names,
+        rows,
+        totalRows: raw.totalRows,
+        asset: { name: raw.tableName || tableName },
+      });
     } catch (e: any) {
       message.error(e.message || '数据预览失败');
     }
   };
-  const mountRows = (data.mounts || []).map((row: DataSandboxRecord) => ({
-    ...row,
-    _kind: 'mount',
-  }));
-  const resultRows = (data.results || []).map((row: DataSandboxRecord) => ({
-    ...row,
-    _kind: 'result',
-  }));
+  const mountRows = (data.items || [])
+    .filter((r: DataSandboxRecord) => r.kind === 'MOUNT')
+    .map((row: DataSandboxRecord) => ({ ...row, _kind: 'mount' }));
+  const resultRows = (data.items || [])
+    .filter((r: DataSandboxRecord) => r.kind === 'RESULT')
+    .map((row: DataSandboxRecord) => ({ ...row, _kind: 'result' }));
   const columns = [
     {
+      title: '表名',
+      dataIndex: 'tableName',
+      render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+    },
+    {
       title: '数据名称',
-      dataIndex: 'asset_name',
-      render: (_: any, r: DataSandboxRecord) =>
-        r.asset_name || r.name || r.task_name || r.asset_id,
+      dataIndex: 'name',
+      render: (_: any, r: DataSandboxRecord) => r.name || r.assetId || '-',
     },
     {
       title: '类型',
       dataIndex: '_kind',
       render: (v: string, r: DataSandboxRecord) => (
         <Tag color={v === 'mount' ? 'blue' : 'green'}>
-          {v === 'mount' ? '初始挂载数据' : `${r.exec_type || '计算'}结果`}
+          {v === 'mount' ? '初始挂载数据' : '计算结果'}
         </Tag>
       ),
     },
     {
-      title: '提供方/任务',
-      render: (_: any, r: DataSandboxRecord) =>
-        r.provider_node_name || r.provider_node_id || r.task_id || '-',
+      title: '来源',
+      dataIndex: 'source',
+      render: (v: string) => (
+        <Tag color={v === 'SYNCED' ? 'orange' : 'default'}>
+          {v === 'SYNCED' ? '跨节点同步' : '本节点'}
+        </Tag>
+      ),
     },
     {
-      title: '时间',
-      render: (_: any, r: DataSandboxRecord) =>
-        formatTime(r.created_at || r.finished_at || r.updated_at),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (v: string) => <Tag>{v || 'SUCCEEDED'}</Tag>,
+      title: '行数',
+      dataIndex: 'rowCount',
+      render: (v: number) => (v == null ? 0 : String(v)),
     },
     {
       title: '操作',
       render: (_: any, r: DataSandboxRecord) => (
         <Button
           type="link"
-          disabled={!r.asset_id && !r.result_asset_id}
-          onClick={() => previewAsset(r.asset_id || r.result_asset_id)}
+          disabled={!r.tableName}
+          onClick={() => previewTable(r.tableName)}
         >
-          预览前10行
+          预览20行
         </Button>
       ),
     },
@@ -394,18 +414,19 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
   return (
     <MvpPage
       title="沙箱数据目录"
-      description="查看沙箱挂载的初始数据及计算任务产出的结果数据"
+      description="查看沙箱权威库 sandbox_data.db 中的挂载初始数据及计算任务产出的结果数据"
       extra={<RefreshButton loading={loading} onClick={refresh} />}
     >
       <Table
-        rowKey={(r) => `${r._kind}-${r.id || r.task_id || r.asset_id}`}
+        rowKey={(r) => `${r._kind}-${r.tableName}`}
         loading={loading}
         dataSource={[...mountRows, ...resultRows]}
         columns={columns}
+        pagination={false}
       />
       <Modal
         width={900}
-        title="数据预览（前10行）"
+        title={`数据预览（${preview?.tableName || ''} 前20行）`}
         open={!!preview}
         onCancel={() => setPreview(undefined)}
         footer={null}
