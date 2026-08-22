@@ -212,6 +212,9 @@ export const DataAssetApi = {
     assetPost<DataSandboxRecord>('/usage-controls/save', data),
   reviewUsageControl: (data: DataSandboxRecord) =>
     assetPost<DataSandboxRecord>('/usage-controls/review', data),
+  mountControls: () => assetGet<DataSandboxRecord[]>('/usage-controls/mounts'),
+  saveMountControl: (data: DataSandboxRecord) =>
+    assetPost<DataSandboxRecord>('/usage-controls/mounts/save', data),
 };
 
 const computeBase = '/api/v1alpha1/data-compute';
@@ -252,19 +255,11 @@ export const DataComputeApi = {
       tableName,
       limit,
     }),
-  sandboxDbDownload: async (sandboxId: string) => {
-    const query = new URLSearchParams({ sandboxId });
-    const response = await fetch(`${computeBase}/sandbox-db/download?${query}`, {
-      credentials: 'include',
-      headers: {
-        'User-Token': localStorage.getItem('User-Token') || '',
-        'Trace-Id': `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      },
-    });
-    if (!response.ok) throw new Error(`沙箱数据库下载失败: HTTP ${response.status}`);
-    return response.blob();
-  },
-  // 单表 CSV 导出（MOUNT/RESULT 表均可导出，结果表仅预览+导出、不可消费/挂载）
+  resultControls: (sandboxId: string) =>
+    computeGet<DataSandboxRecord[]>('/result-controls', { sandboxId }),
+  saveResultControl: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/result-controls/save', data),
+  // 仅开发结果表可按权限导出；挂载数据不提供下载。
   sandboxDbTableExport: async (sandboxId: string, tableName: string) => {
     const query = new URLSearchParams({ sandboxId, tableName });
     const response = await fetch(`${computeBase}/sandbox-db/table-export?${query}`, {

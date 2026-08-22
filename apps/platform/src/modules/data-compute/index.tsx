@@ -415,23 +415,37 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
       render: (v: number) => (v == null ? 0 : String(v)),
     },
     {
+      title: '查看截止时间',
+      dataIndex: 'view_until',
+      render: (value: string, row: DataSandboxRecord) =>
+        row._kind === 'result' ? formatTime(value) || '长期' : '-',
+    },
+    {
+      title: '导出截止时间',
+      dataIndex: 'export_until',
+      render: (value: string, row: DataSandboxRecord) =>
+        row._kind === 'result' && row.allow_export ? formatTime(value) : '-',
+    },
+    {
       title: '操作',
       render: (_: any, r: DataSandboxRecord) => (
         <Space>
           <Button
             type="link"
-            disabled={!r.tableName}
+            disabled={!r.tableName || !r.canPreview}
             onClick={() => previewTable(r.tableName)}
           >
             预览
           </Button>
-          <Button
-            type="link"
-            disabled={!r.tableName}
-            onClick={() => exportTable(r.tableName)}
-          >
-            导出
-          </Button>
+          {r._kind === 'result' && (
+            <Button
+              type="link"
+              disabled={!r.tableName || !r.canExport}
+              onClick={() => exportTable(r.tableName)}
+            >
+              导出开发结果
+            </Button>
+          )}
         </Space>
       ),
     },

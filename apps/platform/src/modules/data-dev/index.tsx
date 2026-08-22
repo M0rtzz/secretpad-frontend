@@ -2,6 +2,7 @@ import {
   Alert,
   AutoComplete,
   Button,
+  DatePicker,
   Drawer,
   Form,
   Input,
@@ -11,6 +12,7 @@ import {
   Radio,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -18,6 +20,7 @@ import {
   Tooltip,
   Upload,
 } from 'antd';
+import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
@@ -73,16 +76,6 @@ const statusColors: Record<string, string> = {
 };
 
 const CANCELLABLE = ['PENDING', 'RUNNING'];
-
-/** 解析后端返回的 JSON 字符串预览（header/rows）。 */
-const parsePreview = (value: unknown) => {
-  if (typeof value !== 'string' || !value) return {};
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
-};
 
 /** File → base64（JAR 内联上传）。 */
 const fileToBase64 = (file: File) =>
@@ -154,6 +147,7 @@ export const DataDevComponent = () => {
   const [taskForm] = Form.useForm();
   const taskExec = Form.useWatch('execType', taskForm);
   const taskArtifactName = Form.useWatch('artifactName', taskForm);
+  const allowResultExport = Form.useWatch('allowExport', taskForm);
   const [preview, setPreview] = useState<DataSandboxRecord>();
   const [allArtifacts, setAllArtifacts] = useState<DataSandboxRecord[]>([]);
   const [jarFile, setJarFile] = useState<File>();
@@ -169,6 +163,11 @@ export const DataDevComponent = () => {
   const [resultItem, setResultItem] = useState<DataSandboxRecord>();
   const [resultOpen, setResultOpen] = useState(false);
   const [resultLoading, setResultLoading] = useState(false);
+  const [resultControls, setResultControls] = useState<DataSandboxRecord[]>([]);
+  const [controlLoading, setControlLoading] = useState(false);
+  const [controlItem, setControlItem] = useState<DataSandboxRecord>();
+  const [controlForm] = Form.useForm();
+  const controlAllowExport = Form.useWatch('allowExport', controlForm);
 
   /* ------------------------------- 数据加载 ------------------------------- */
 
@@ -209,6 +208,20 @@ export const DataDevComponent = () => {
     }
   }, [taskStatus, taskRunMode, taskExecType, taskKeyword]);
 
+  const refreshResultControls = useCallback(async () => {
+    if (!sandboxId) return;
+    setControlLoading(true);
+    try {
+      setResultControls(
+        responseData(await DataComputeApi.resultControls(sandboxId), []),
+      );
+    } catch (error: any) {
+      message.error(error.message || '加载产出权限失败');
+    } finally {
+      setControlLoading(false);
+    }
+  }, [sandboxId]);
+
   useEffect(() => {
     refreshArtifacts();
   }, [refreshArtifacts]);
@@ -216,6 +229,10 @@ export const DataDevComponent = () => {
   useEffect(() => {
     refreshTasks();
   }, [refreshTasks]);
+
+  useEffect(() => {
+    refreshResultControls();
+  }, [refreshResultControls]);
 
   useEffect(() => {
     if (taskOpen) {
@@ -366,7 +383,7 @@ export const DataDevComponent = () => {
     taskForm.resetFields();
     setPreview(undefined);
     setJarFile(undefined);
-    taskForm.setFieldsValue({ runMode: 'DEV', execType: 'SQL' });
+    taskForm.setFieldsValue({ runMode: 'DEV', execType: 'SQL', allowExport: false });
     setTaskOpen(true);
   };
 
@@ -448,6 +465,10 @@ export const DataDevComponent = () => {
   const submitTask = async (values: DataSandboxRecord) => {
     try {
       const { artifactName, version, ...rest } = values;
+      rest.viewUntil = values.viewUntil?.toISOString?.() || '';
+      rest.exportUntil = values.allowExport
+        ? values.exportUntil?.toISOString?.() || ''
+        : '';
       // 表单 params 为 JSON 字符串，后端要求对象
       if (typeof rest.params === 'string' && rest.params.trim()) {
         try {
@@ -836,7 +857,7 @@ export const DataDevComponent = () => {
                               调试日志
                             </Button>
                           )}
-                          {row.status === 'SUCCEEDED' && row.run_mode === 'PROD' && (
+                          {row.status === 'SUCCEEDED' && (
                             <Button type="link" onClick={() => openResult(row)}>
                               结果
                             </Button>
@@ -852,8 +873,140 @@ export const DataDevComponent = () => {
               </>
             ),
           },
+          ...(sandboxId
+            ? [
+                {
+                  key: 'result-controls',
+                  label: '产出与权限',
+                  children: (
+                    <Table
+                      rowKey="table_name"
+                      loading={controlLoading}
+                      dataSource={resultControls}
+                      columns={[
+                        { title: '开发结果', dataIndex: 'name' },
+                        { title: '结果表', dataIndex: 'table_name' },
+                        { title: '行数', dataIndex: 'row_count' },
+                        {
+                          title: '查看截止时间',
+                          dataIndex: 'view_until',
+                          render: (value: string) => formatTime(value),
+                        },
+                        {
+                          title: '导出',
+                          render: (_: unknown, row: DataSandboxRecord) =>
+                            row.allow_export ? (
+                              <Tag color={row.canExport ? 'success' : 'default'}>
+                                {row.canExport
+                                  ? `允许至 ${formatTime(row.export_until)}`
+                                  : '已截止'}
+                              </Tag>
+                            ) : (
+                              <Tag>禁止导出</Tag>
+                            ),
+                        },
+                        {
+                          title: '操作',
+                          render: (_: unknown, row: DataSandboxRecord) => (
+                            <Button
+                              type="link"
+                              onClick={() => {
+                                setControlItem(row);
+                                controlForm.setFieldsValue({
+                                  viewUntil: row.view_until
+                                    ? dayjs(row.view_until)
+                                    : undefined,
+                                  allowExport: !!row.allow_export,
+                                  exportUntil: row.export_until
+                                    ? dayjs(row.export_until)
+                                    : undefined,
+                                });
+                              }}
+                            >
+                              设置权限
+                            </Button>
+                          ),
+                        },
+                      ]}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
+
+      <Modal
+        title={`产出权限：${controlItem?.name || controlItem?.table_name || ''}`}
+        open={!!controlItem}
+        onCancel={() => setControlItem(undefined)}
+        onOk={() => controlForm.submit()}
+        okText="保存"
+      >
+        <Form
+          form={controlForm}
+          layout="vertical"
+          onFinish={async (values) => {
+            if (!controlItem) return;
+            try {
+              responseData(
+                await DataComputeApi.saveResultControl({
+                  sandboxId,
+                  tableName: controlItem.table_name,
+                  taskId: controlItem.task_id,
+                  viewUntil: values.viewUntil?.toISOString?.() || '',
+                  allowExport: values.allowExport,
+                  exportUntil: values.allowExport
+                    ? values.exportUntil?.toISOString?.() || ''
+                    : '',
+                  version: controlItem.version || 0,
+                }),
+                {},
+              );
+              message.success('产出权限已更新');
+              setControlItem(undefined);
+              refreshResultControls();
+            } catch (error: any) {
+              message.error(error.message || '保存失败');
+            }
+          }}
+        >
+          <Form.Item
+            name="viewUntil"
+            label="查看截止时间"
+            rules={[{ required: true, message: '请设置查看截止时间' }]}
+          >
+            <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
+          </Form.Item>
+          <Form.Item
+            name="allowExport"
+            label="允许导出开发结果"
+            valuePropName="checked"
+          >
+            <Switch checkedChildren="允许" unCheckedChildren="禁止" />
+          </Form.Item>
+          {controlAllowExport && (
+            <Form.Item
+              name="exportUntil"
+              label="导出截止时间"
+              dependencies={['viewUntil']}
+              rules={[
+                { required: true, message: '允许导出时必须设置导出截止时间' },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    const viewUntil = getFieldValue('viewUntil');
+                    return !value || !viewUntil || !value.isAfter(viewUntil)
+                      ? Promise.resolve()
+                      : Promise.reject(new Error('导出截止时间不能晚于查看截止时间'));
+                  },
+                }),
+              ]}
+            >
+              <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
+            </Form.Item>
+          )}
+        </Form>
+      </Modal>
 
       {/* 制品 编辑元数据 */}
       <Modal
@@ -1212,6 +1365,54 @@ export const DataDevComponent = () => {
               <Input placeholder="例如 result_agg" style={{ width: 220 }} />
             </Form.Item>
           </Space>
+          {sandboxId && (
+            <>
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginTop: 16, marginBottom: 12 }}
+                message="产出权限随任务保存；结果生成后可在“产出与权限”中调整。"
+              />
+              <Space size="large" wrap align="start">
+                <Form.Item
+                  name="viewUntil"
+                  label="查看截止时间"
+                  rules={[{ required: true, message: '请设置开发结果查看截止时间' }]}
+                >
+                  <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
+                </Form.Item>
+                <Form.Item
+                  name="allowExport"
+                  label="允许导出开发结果"
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="允许" unCheckedChildren="禁止" />
+                </Form.Item>
+                {allowResultExport && (
+                  <Form.Item
+                    name="exportUntil"
+                    label="导出截止时间"
+                    dependencies={['viewUntil']}
+                    rules={[
+                      { required: true, message: '允许导出时必须设置导出截止时间' },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          const viewUntil = getFieldValue('viewUntil');
+                          return !value || !viewUntil || !value.isAfter(viewUntil)
+                            ? Promise.resolve()
+                            : Promise.reject(
+                                new Error('导出截止时间不能晚于查看截止时间'),
+                              );
+                        },
+                      }),
+                    ]}
+                  >
+                    <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
+                  </Form.Item>
+                )}
+              </Space>
+            </>
+          )}
         </Form>
       </Modal>
 
@@ -1334,11 +1535,6 @@ export const DataDevComponent = () => {
                 刷新
               </Button>
             </Space>
-            <div>
-              <strong>结果预览（DEV 调试）</strong>
-              {logItem.result_preview &&
-                renderPreviewTable(parsePreview(logItem.result_preview))}
-            </div>
             <div>
               <strong>日志</strong>
               {logLoading ? (
