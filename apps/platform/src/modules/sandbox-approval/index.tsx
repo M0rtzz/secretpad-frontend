@@ -42,6 +42,7 @@ const typeColors: Record<string, string> = {
 
 const statusLabels: Record<string, string> = {
   DATA_PROVIDER_REVIEW: '待项目节点一致审核',
+  OPERATOR_REVIEW: '待运营方审核',
   APPROVED: '已批准',
   EXECUTING: '执行中',
   COMPLETED: '已完成',
