@@ -117,7 +117,7 @@ export const DataCatalogComponent = () => {
     try {
       const values = await databaseForm.validateFields();
       setDatabaseLoading(true);
-      await DataAssetApi.importDatabase(databaseRequest(values));
+      responseData(await DataAssetApi.importDatabase(databaseRequest(values)), {});
       message.success('库表数据已落盘并注册为本地数据资产');
       setAddOpen(false);
       setDatabasePreview(undefined);
