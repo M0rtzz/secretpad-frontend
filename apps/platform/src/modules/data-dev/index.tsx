@@ -1,7 +1,7 @@
 import {
   Alert,
+  AutoComplete,
   Button,
-  Checkbox,
   Drawer,
   Form,
   Input,
@@ -28,7 +28,6 @@ import {
 } from '@/services/data-sandbox';
 import { parse } from 'query-string';
 import { useLocation } from 'umi';
-import { listP2PProject } from '@/services/secretpad/P2PProjectController';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
 
 const artifactTypeLabels: Record<string, string> = {
@@ -85,6 +84,16 @@ const parsePreview = (value: unknown) => {
   }
 };
 
+/** File → base64（JAR 内联上传）。 */
+const fileToBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      resolve(String((reader.result as string).split(',')[1] || ''));
+    reader.onerror = () => reject(new Error('读取文件失败'));
+    reader.readAsDataURL(file);
+  });
+
 /** 渲染 header[] + rows[][] 预览表。 */
 const renderPreviewTable = (preview: DataSandboxRecord) => {
   const header = (preview.header || []) as string[];
@@ -128,16 +137,6 @@ export const DataDevComponent = () => {
   const [artifactOpen, setArtifactOpen] = useState(false);
   const [artifactItem, setArtifactItem] = useState<DataSandboxRecord>();
   const [artifactForm] = Form.useForm();
-  /* 脚本版本（SQL/PYTHON） */
-  const [versionOpen, setVersionOpen] = useState(false);
-  const [versionArtifact, setVersionArtifact] = useState<DataSandboxRecord>();
-  const [versionContent, setVersionContent] = useState('');
-  const [scriptForm] = Form.useForm();
-  /* JAR 上传 */
-  const [jarOpen, setJarOpen] = useState(false);
-  const [jarArtifactId, setJarArtifactId] = useState('');
-  const [jarFile, setJarFile] = useState<File>();
-  const [jarForm] = Form.useForm();
   /* 版本列表 */
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versionsItem, setVersionsItem] = useState<DataSandboxRecord>();
@@ -154,12 +153,10 @@ export const DataDevComponent = () => {
   const [taskOpen, setTaskOpen] = useState(false);
   const [taskForm] = Form.useForm();
   const taskExec = Form.useWatch('execType', taskForm);
-  const taskSource = Form.useWatch('source', taskForm);
-  const taskArtifactId = Form.useWatch('artifactId', taskForm);
+  const taskArtifactName = Form.useWatch('artifactName', taskForm);
   const [preview, setPreview] = useState<DataSandboxRecord>();
   const [allArtifacts, setAllArtifacts] = useState<DataSandboxRecord[]>([]);
-  const [artifactVersions, setArtifactVersions] = useState<DataSandboxRecord[]>([]);
-  const [deps, setDeps] = useState<DataSandboxRecord[]>([]);
+  const [jarFile, setJarFile] = useState<File>();
 
   /* ------------------------------- 详情 / 日志 / 结果 ------------------------------- */
   const [detailItem, setDetailItem] = useState<DataSandboxRecord>();
@@ -172,27 +169,6 @@ export const DataDevComponent = () => {
   const [resultItem, setResultItem] = useState<DataSandboxRecord>();
   const [resultOpen, setResultOpen] = useState(false);
   const [resultLoading, setResultLoading] = useState(false);
-  const [mountTask, setMountTask] = useState<DataSandboxRecord>();
-  const [projects, setProjects] = useState<DataSandboxRecord[]>([]);
-
-  /* ------------------------------ SQL 工作台 ------------------------------ */
-  const [wsSql, setWsSql] = useState('SELECT * FROM src LIMIT 100');
-  const [wsParams, setWsParams] = useState('{}');
-  const [wsNodeId, setWsNodeId] = useState('');
-  const [wsDatatableId, setWsDatatableId] = useState('');
-  const [wsPreview, setWsPreview] = useState<DataSandboxRecord>();
-  const [wsRunning, setWsRunning] = useState(false);
-  const [wsTaskId, setWsTaskId] = useState('');
-  const [wsSaveArtifact, setWsSaveArtifact] = useState('');
-  const [wsSaveOpen, setWsSaveOpen] = useState(false);
-  const [wsSaveForm] = Form.useForm();
-
-  /* ------------------------------ 依赖白名单 ------------------------------ */
-  const [depEnabled, setDepEnabled] = useState('1');
-  const [depKeyword, setDepKeyword] = useState('');
-  const [depOpen, setDepOpen] = useState(false);
-  const [depItem, setDepItem] = useState<DataSandboxRecord>();
-  const [depForm] = Form.useForm();
 
   /* ------------------------------- 数据加载 ------------------------------- */
 
@@ -233,19 +209,6 @@ export const DataDevComponent = () => {
     }
   }, [taskStatus, taskRunMode, taskExecType, taskKeyword]);
 
-  const refreshDeps = useCallback(async () => {
-    try {
-      setDeps(
-        responseData(
-          await DataDevApi.dependencies({ enabled: depEnabled, keyword: depKeyword }),
-          [],
-        ),
-      );
-    } catch (error: any) {
-      message.error(error.message || '加载依赖白名单失败');
-    }
-  }, [depEnabled, depKeyword]);
-
   useEffect(() => {
     refreshArtifacts();
   }, [refreshArtifacts]);
@@ -255,15 +218,8 @@ export const DataDevComponent = () => {
   }, [refreshTasks]);
 
   useEffect(() => {
-    refreshDeps();
-  }, [refreshDeps]);
-
-  useEffect(() => {
     if (taskOpen) {
       DataDevApi.artifacts().then((res) => setAllArtifacts(responseData(res, [])));
-      DataDevApi.dependencies({ enabled: '1' }).then((res) =>
-        setDeps(responseData(res, [])),
-      );
       if (sandboxId) {
         DataComputeApi.sandboxDbDirectory(sandboxId)
           .then((res) => setSandboxTables(responseData(res, {}).items || []))
@@ -271,14 +227,6 @@ export const DataDevComponent = () => {
       }
     }
   }, [taskOpen]);
-
-  useEffect(() => {
-    if (taskArtifactId) {
-      DataDevApi.versions(taskArtifactId).then((res) =>
-        setArtifactVersions(responseData(res, [])),
-      );
-    }
-  }, [taskArtifactId]);
 
   useEffect(() => {
     if (versionsOpen && versionsItem) {
@@ -290,13 +238,6 @@ export const DataDevComponent = () => {
   }, [versionsOpen, versionsItem]);
 
   /* ------------------------------- 制品操作 ------------------------------- */
-
-  const openArtifactCreate = () => {
-    setArtifactItem(undefined);
-    artifactForm.resetFields();
-    artifactForm.setFieldsValue({ type: 'SQL' });
-    setArtifactOpen(true);
-  };
 
   const openArtifactEdit = (row: DataSandboxRecord) => {
     setArtifactItem(row);
@@ -337,67 +278,52 @@ export const DataDevComponent = () => {
     }
   };
 
-  /** SQL/PYTHON/FUNCTION 脚本版本：新建/编辑 → 保存为新版本（版本自增，不可变）。 */
-  const openScriptVersion = (row: DataSandboxRecord) => {
-    setVersionArtifact(row);
-    setVersionContent('');
-    scriptForm.resetFields();
-    scriptForm.setFieldsValue({
-      paramsSchema: '[]',
-      defaultParams: '{}',
-      dependencyNames: [],
-      functionName: '',
-      functionNargs: undefined,
-      sqlTemplate: '',
-    });
-    setVersionOpen(true);
-  };
-
-  const saveScriptVersion = async (values: DataSandboxRecord) => {
-    if (!versionArtifact) return;
+  /** 查看最新版本程序信息（JAR：大小/SHA256+下载；脚本：只读代码）。 */
+  const viewArtifact = async (row: DataSandboxRecord) => {
     try {
-      responseData(
-        await DataDevApi.createVersion({
-          artifactId: versionArtifact.id,
-          contentText: versionContent,
-          ...values,
-        }),
-        {},
-      );
-      message.success(`新版本已保存（v${(versionArtifact.latest_version || 0) + 1}）`);
-      setVersionOpen(false);
-      scriptForm.resetFields();
-      refreshArtifacts();
+      const list = responseData(await DataDevApi.versions(row.id), []);
+      const latest = [...list].sort((a, b) => Number(b.version) - Number(a.version))[0];
+      if (!latest) {
+        message.info('该制品暂无版本');
+        return;
+      }
+      if (row.type === 'JAR') {
+        Modal.info({
+          title: `制品 ${row.name} v${latest.version}`,
+          width: 640,
+          content: (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <div>
+                大小：{((latest.size || 0) / 1024).toFixed(1)} KB · SHA256：
+                <span style={{ fontFamily: 'monospace' }}>{latest.sha256 || '-'}</span>
+              </div>
+              <div>
+                <Button type="primary" onClick={() => downloadJar(latest.id)}>
+                  下载 JAR
+                </Button>
+              </div>
+            </Space>
+          ),
+        });
+      } else {
+        Modal.info({
+          title: `制品 ${row.name} v${latest.version}`,
+          width: 720,
+          content: (
+            <pre
+              style={{
+                maxHeight: 420,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {latest.content_text || '(空)'}
+            </pre>
+          ),
+        });
+      }
     } catch (error: any) {
-      message.error(error.message || '保存版本失败');
-    }
-  };
-
-  /** JAR 上传：校验 .jar 后缀 + 大小，成功后新版本。 */
-  const openJarUpload = (row: DataSandboxRecord) => {
-    setJarArtifactId(row.id);
-    setJarFile(undefined);
-    jarForm.resetFields();
-    jarForm.setFieldsValue({ paramsSchema: '[]', defaultParams: '{}' });
-    setJarOpen(true);
-  };
-
-  const saveJarUpload = async (values: DataSandboxRecord) => {
-    if (!jarFile) {
-      message.warning('请选择 .jar 文件');
-      return;
-    }
-    try {
-      responseData(
-        await DataDevApi.uploadJarVersion(jarArtifactId, jarFile, values),
-        {},
-      );
-      message.success('JAR 版本已上传');
-      setJarOpen(false);
-      setJarFile(undefined);
-      refreshArtifacts();
-    } catch (error: any) {
-      message.error(error.message || '上传失败');
+      message.error(error.message || '查看失败');
     }
   };
 
@@ -439,7 +365,8 @@ export const DataDevComponent = () => {
   const openTaskSubmit = () => {
     taskForm.resetFields();
     setPreview(undefined);
-    taskForm.setFieldsValue({ runMode: 'DEV', execType: 'SQL', source: 'inline' });
+    setJarFile(undefined);
+    taskForm.setFieldsValue({ runMode: 'DEV', execType: 'SQL' });
     setTaskOpen(true);
   };
 
@@ -520,7 +447,7 @@ export const DataDevComponent = () => {
 
   const submitTask = async (values: DataSandboxRecord) => {
     try {
-      const { saveAs, artifactName, ...rest } = values;
+      const { artifactName, version, ...rest } = values;
       // 表单 params 为 JSON 字符串，后端要求对象
       if (typeof rest.params === 'string' && rest.params.trim()) {
         try {
@@ -531,51 +458,75 @@ export const DataDevComponent = () => {
         }
       }
       let payload: DataSandboxRecord = rest;
-      // 内联脚本 + 「保存任务」= 先落制品+版本，再按制品引用提交
-      if (saveAs && artifactName && (rest.sql || rest.script || rest.functionSource)) {
-        const isFunction = rest.execType === 'FUNCTION';
+      const execType = String(rest.execType);
+      // JAR 内联上传：先读 base64（若同时填制品名则改为按制品版本引用提交）
+      let jarB64 = '';
+      if (execType === 'JAR') {
+        if (!jarFile) {
+          message.warning('请上传 .jar 文件');
+          return;
+        }
+        jarB64 = await fileToBase64(jarFile);
+      }
+      // 制品名称（可选）：已有制品 → 发布新版本（版本号用户手填/自动）；新名称 → 新建制品+首版；留空 → 不落制品
+      if (artifactName) {
+        const isFunction = execType === 'FUNCTION';
         const contentText = isFunction ? rest.functionSource : rest.sql || rest.script;
         const existing = allArtifacts.find(
-          (a) => a.name === artifactName && a.type === rest.execType,
+          (a) => a.name === artifactName && a.type === execType,
         );
         let artifactId: string;
         if (existing) {
           artifactId = existing.id;
         } else {
           const created = responseData(
-            await DataDevApi.createArtifact({
-              name: artifactName,
-              type: rest.execType,
-            }),
+            await DataDevApi.createArtifact({ name: artifactName, type: execType }),
             {},
           );
           artifactId = created.id;
         }
-        const version = responseData(
-          await DataDevApi.createVersion({
-            artifactId,
-            contentText,
-            paramsSchema: values.paramsSchema || '[]',
-            defaultParams: values.defaultParams || '{}',
-            dependencyNames: rest.dependencyNames || [],
-            ...(isFunction
-              ? {
-                  functionName: rest.functionName,
-                  functionNargs: rest.functionNargs,
-                  sqlTemplate: rest.sql,
-                }
-              : {}),
-          }),
-          {},
-        );
-        payload = { ...rest, artifactId, version: version.version };
-        delete payload.sql;
-        delete payload.script;
-        if (isFunction) {
-          delete payload.functionSource;
-          delete payload.functionName;
-          delete payload.functionNargs;
+        if (execType === 'JAR') {
+          // 发布 JAR 新版本（version 手填可选；后端查重/自增）
+          const createdVersion = responseData(
+            await DataDevApi.uploadJarVersion(artifactId, jarFile as File, {
+              paramsSchema: values.paramsSchema || '[]',
+              defaultParams: values.defaultParams || '{}',
+              description: values.description || '',
+              version: version || undefined,
+            }),
+            {},
+          );
+          payload = { ...payload, artifactId, version: createdVersion.version };
+        } else {
+          const createdVersion = responseData(
+            await DataDevApi.createVersion({
+              artifactId,
+              version: version || undefined,
+              contentText,
+              paramsSchema: values.paramsSchema || '[]',
+              defaultParams: values.defaultParams || '{}',
+              ...(isFunction
+                ? {
+                    functionName: rest.functionName,
+                    functionNargs: rest.functionNargs,
+                    sqlTemplate: rest.sql,
+                  }
+                : {}),
+            }),
+            {},
+          );
+          payload = { ...payload, artifactId, version: createdVersion.version };
+          delete payload.sql;
+          delete payload.script;
+          if (isFunction) {
+            delete payload.functionSource;
+            delete payload.functionName;
+            delete payload.functionNargs;
+          }
         }
+      } else if (execType === 'JAR') {
+        // 内联 JAR 提交（不落制品）
+        payload.jar = jarB64;
       }
       if (sandboxId) {
         // 沙箱表源：走沙箱 SQLite 计算契约（源表/输出表/JDBC 注入）
@@ -587,6 +538,7 @@ export const DataDevComponent = () => {
       setTaskOpen(false);
       taskForm.resetFields();
       setPreview(undefined);
+      setJarFile(undefined);
       refreshTasks();
       refreshArtifacts();
     } catch (error: any) {
@@ -650,170 +602,18 @@ export const DataDevComponent = () => {
     }
   };
 
-  const openMount = (row: DataSandboxRecord) => {
-    listP2PProject().then((res) => setProjects(responseData(res, [])));
-    setMountTask({ ...row, mountProjectId: '' });
-  };
-
-  const mountResult = async () => {
-    if (!mountTask) return;
-    try {
-      responseData(
-        await DataDevApi.mountResult({
-          taskId: mountTask.id,
-          projectId: mountTask.mountProjectId,
-        }),
-        {},
-      );
-      message.success('结果已挂载到项目');
-      setMountTask(undefined);
-    } catch (error: any) {
-      message.error(error.message || '挂载失败');
-    }
-  };
-
-  /* ------------------------------ SQL 工作台 ------------------------------ */
-
-  const wsPreviewSource = async () => {
-    if (!wsNodeId || !wsDatatableId) {
-      message.warning('请先填写源节点与数据表 ID');
-      return;
-    }
-    try {
-      setWsPreview(
-        responseData(await DataDevApi.previewSource(wsNodeId, wsDatatableId, 20), {}),
-      );
-    } catch (error: any) {
-      message.error(error.message || '预览失败');
-    }
-  };
-
-  const wsRun = async () => {
-    if (!wsNodeId || !wsDatatableId || !wsSql) {
-      message.warning('请填写源表与 SQL');
-      return;
-    }
-    setWsRunning(true);
-    try {
-      const data = responseData(
-        await DataDevApi.submitTask({
-          name: 'SQL 工作台',
-          runMode: 'DEV',
-          execType: 'SQL',
-          nodeId: wsNodeId,
-          datatableId: wsDatatableId,
-          sql: wsSql,
-          params: parsePreview(wsParams),
-        }),
-        {},
-      );
-      setWsTaskId(data.id);
-      message.success('执行成功（开发调试）');
-    } catch (error: any) {
-      message.error(error.message || '执行失败');
-    } finally {
-      setWsRunning(false);
-    }
-  };
-
-  const wsSave = async () => {
-    if (!wsSql) {
-      message.warning('请输入 SQL');
-      return;
-    }
-    if (!wsSaveArtifact) {
-      message.warning('请输入制品名称');
-      return;
-    }
-    try {
-      const existing = allArtifacts.find(
-        (a) => a.name === wsSaveArtifact && a.type === 'SQL',
-      );
-      let artifactId: string;
-      if (existing) {
-        artifactId = existing.id;
-      } else {
-        const created = responseData(
-          await DataDevApi.createArtifact({ name: wsSaveArtifact, type: 'SQL' }),
-          {},
-        );
-        artifactId = created.id;
-      }
-      responseData(
-        await DataDevApi.createVersion({ artifactId, contentText: wsSql }),
-        {},
-      );
-      message.success(`SQL 已保存为制品 ${wsSaveArtifact} 新版本`);
-      refreshArtifacts();
-      setWsSaveOpen(false);
-    } catch (error: any) {
-      message.error(error.message || '保存失败');
-    }
-  };
-
-  /* ------------------------------- 依赖操作 ------------------------------- */
-
-  const openDepCreate = () => {
-    setDepItem(undefined);
-    depForm.resetFields();
-    depForm.setFieldsValue({ enabled: true });
-    setDepOpen(true);
-  };
-
-  const openDepEdit = (row: DataSandboxRecord) => {
-    setDepItem(row);
-    depForm.setFieldsValue({
-      name: row.name,
-      versionSpec: row.version_spec || '',
-      description: row.description || '',
-      enabled: row.enabled === 1,
-    });
-    setDepOpen(true);
-  };
-
-  const saveDep = async (values: DataSandboxRecord) => {
-    try {
-      if (depItem?.id) {
-        responseData(
-          await DataDevApi.updateDependency({ id: depItem.id, ...values }),
-          {},
-        );
-        message.success('依赖已更新');
-      } else {
-        responseData(await DataDevApi.createDependency(values), {});
-        message.success('依赖已创建');
-      }
-      setDepOpen(false);
-      depForm.resetFields();
-      refreshDeps();
-    } catch (error: any) {
-      message.error(error.message || '保存依赖失败');
-    }
-  };
-
-  const deleteDep = async (row: DataSandboxRecord) => {
-    try {
-      responseData(await DataDevApi.deleteDependency(row.id), {});
-      message.success('依赖已删除');
-      refreshDeps();
-    } catch (error: any) {
-      message.error(error.message || '删除失败');
-    }
-  };
-
   /* ------------------------------- 渲染 ------------------------------- */
 
   return (
     <MvpPage
       title="数据开发"
-      description="JAR / SQL / Python 计算任务开发：制品与版本管理、调试运行与正式运行、结果数据集、依赖白名单"
+      description="JAR / SQL / Python / 函数 计算任务开发：制品与版本管理、调试运行与正式运行、结果数据集"
       extra={
         <RefreshButton
           loading={artifactLoading || taskLoading}
           onClick={() => {
             refreshArtifacts();
             refreshTasks();
-            refreshDeps();
           }}
         />
       }
@@ -844,10 +644,13 @@ export const DataDevComponent = () => {
                     onSearch={setArtifactKeyword}
                     style={{ width: 240 }}
                   />
-                  <Button type="primary" onClick={openArtifactCreate}>
-                    新建制品
-                  </Button>
                 </Space>
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="制品不手工创建：所有新制品/新版本均在「提交任务」时填写制品名称自动创建（已有制品选名发布新版本，新名称新建首版）。"
+                />
                 <Table
                   rowKey="id"
                   loading={artifactLoading}
@@ -878,18 +681,12 @@ export const DataDevComponent = () => {
                     { title: '更新时间', dataIndex: 'updated_at', render: formatTime },
                     {
                       title: '操作',
-                      width: 260,
+                      width: 300,
                       render: (_: unknown, row: DataSandboxRecord) => (
                         <Space wrap>
-                          {row.type === 'JAR' ? (
-                            <Button type="link" onClick={() => openJarUpload(row)}>
-                              上传 JAR
-                            </Button>
-                          ) : (
-                            <Button type="link" onClick={() => openScriptVersion(row)}>
-                              新版本
-                            </Button>
-                          )}
+                          <Button type="link" onClick={() => viewArtifact(row)}>
+                            查看
+                          </Button>
                           <Button type="link" onClick={() => openVersions(row)}>
                             版本列表
                           </Button>
@@ -1055,170 +852,12 @@ export const DataDevComponent = () => {
               </>
             ),
           },
-          {
-            key: 'sql',
-            label: 'SQL 工作台',
-            children: (
-              <>
-                <Space style={{ marginBottom: 12 }} wrap>
-                  <Input
-                    placeholder="源节点 ID，例如 alice"
-                    value={wsNodeId}
-                    onChange={(e) => setWsNodeId(e.target.value)}
-                    style={{ width: 180 }}
-                  />
-                  <Input
-                    placeholder="源数据表 ID"
-                    value={wsDatatableId}
-                    onChange={(e) => setWsDatatableId(e.target.value)}
-                    style={{ width: 220 }}
-                  />
-                  <Button onClick={wsPreviewSource}>源数据预览</Button>
-                  <Button type="primary" loading={wsRunning} onClick={wsRun}>
-                    执行（开发调试）
-                  </Button>
-                  <Button onClick={() => setWsSaveOpen(true)}>保存为制品</Button>
-                </Space>
-                {wsPreview && (
-                  <>
-                    <Alert
-                      type="info"
-                      showIcon
-                      style={{ marginBottom: 8 }}
-                      message={`源表 ${wsPreview.name || wsPreview.datatableId} · ${
-                        wsPreview.sourceRows
-                      } 行`}
-                    />
-                    {renderPreviewTable(wsPreview)}
-                  </>
-                )}
-                <Input.TextArea
-                  value={wsSql}
-                  onChange={(e) => setWsSql(e.target.value)}
-                  rows={8}
-                  style={{ fontFamily: 'monospace', marginBottom: 12 }}
-                  placeholder="SELECT category, count(*) c FROM src GROUP BY category"
-                />
-                <Space style={{ marginBottom: 8 }}>
-                  <span>参数 (JSON) ：</span>
-                  <Input
-                    value={wsParams}
-                    onChange={(e) => setWsParams(e.target.value)}
-                    style={{ width: 360 }}
-                    placeholder='{"filter":"A"}'
-                  />
-                </Space>
-                {wsTaskId && (
-                  <Alert
-                    type="success"
-                    showIcon
-                    style={{ marginBottom: 8 }}
-                    action={
-                      <Space>
-                        <Button
-                          size="small"
-                          type="link"
-                          onClick={() => openLog({ id: wsTaskId } as DataSandboxRecord)}
-                        >
-                          调试日志
-                        </Button>
-                      </Space>
-                    }
-                    message={`调试任务 ${wsTaskId} 已成功`}
-                  />
-                )}
-              </>
-            ),
-          },
-          {
-            key: 'deps',
-            label: '依赖白名单',
-            children: (
-              <>
-                <Space style={{ marginBottom: 16 }}>
-                  <Select
-                    value={depEnabled}
-                    onChange={setDepEnabled}
-                    style={{ width: 130 }}
-                    options={[
-                      { value: '', label: '全部' },
-                      { value: '1', label: '已启用' },
-                      { value: '0', label: '已停用' },
-                    ]}
-                  />
-                  <Input.Search
-                    placeholder="依赖名"
-                    allowClear
-                    onSearch={setDepKeyword}
-                    style={{ width: 220 }}
-                  />
-                  <Button type="primary" onClick={openDepCreate}>
-                    新增依赖
-                  </Button>
-                </Space>
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 12 }}
-                  message="Python 运行容器无网络、禁 pip，仅预装白名单包。新增依赖须同时重建 data-sandbox-python-runner 镜像并同步镜像内安装包，否则运行时 import 会被守卫拒绝。"
-                />
-                <Table
-                  rowKey="id"
-                  dataSource={deps}
-                  scroll={{ x: 900 }}
-                  columns={[
-                    {
-                      title: '依赖',
-                      dataIndex: 'name',
-                      render: (v: string) => <Tag color="purple">{v}</Tag>,
-                    },
-                    {
-                      title: '版本约束',
-                      dataIndex: 'version_spec',
-                      render: (v: string) => v || '-',
-                    },
-                    {
-                      title: '状态',
-                      dataIndex: 'enabled',
-                      render: (v: number) =>
-                        v === 1 ? (
-                          <Tag color="success">启用</Tag>
-                        ) : (
-                          <Tag color="default">停用</Tag>
-                        ),
-                    },
-                    {
-                      title: '描述',
-                      dataIndex: 'description',
-                      render: (v: string) => v || '-',
-                    },
-                    { title: '创建人', dataIndex: 'created_by' },
-                    { title: '更新时间', dataIndex: 'updated_at', render: formatTime },
-                    {
-                      title: '操作',
-                      width: 140,
-                      render: (_: unknown, row: DataSandboxRecord) => (
-                        <Space wrap>
-                          <Button type="link" onClick={() => openDepEdit(row)}>
-                            编辑
-                          </Button>
-                          <Button type="link" danger onClick={() => deleteDep(row)}>
-                            删除
-                          </Button>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                />
-              </>
-            ),
-          },
         ]}
       />
 
-      {/* 制品 新建/编辑 */}
+      {/* 制品 编辑元数据 */}
       <Modal
-        title={artifactItem?.id ? `编辑制品：${artifactItem.name}` : '新建制品'}
+        title={`编辑制品：${artifactItem?.name || ''}`}
         open={artifactOpen}
         onCancel={() => setArtifactOpen(false)}
         onOk={() => artifactForm.submit()}
@@ -1227,14 +866,9 @@ export const DataDevComponent = () => {
           <Form.Item name="name" label="制品名称" rules={[{ required: true }]}>
             <Input placeholder="例如：银行对账聚合" />
           </Form.Item>
-          <Form.Item
-            name="type"
-            label="类型"
-            rules={[{ required: true }]}
-            tooltip="JAR：上传编译产物；SQL：SQL 脚本；Python：受控 Python 函数"
-          >
+          <Form.Item name="type" label="类型">
             <Select
-              disabled={!!artifactItem?.id}
+              disabled
               options={Object.entries(artifactTypeLabels).map(([value, label]) => ({
                 value,
                 label,
@@ -1244,164 +878,10 @@ export const DataDevComponent = () => {
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={2} />
           </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* SQL/PYTHON 脚本版本 */}
-      <Modal
-        title={`新增版本：${versionArtifact?.name || ''}（将保存为 v${
-          (versionArtifact?.latest_version || 0) + 1
-        }）`}
-        open={versionOpen}
-        width={720}
-        onCancel={() => setVersionOpen(false)}
-        onOk={() => scriptForm.submit()}
-      >
-        <Form form={scriptForm} layout="vertical" onFinish={saveScriptVersion}>
-          <Form.Item
-            label={
-              versionArtifact?.type === 'PYTHON'
-                ? 'Python 函数'
-                : versionArtifact?.type === 'FUNCTION'
-                ? '函数源码'
-                : 'SQL 脚本'
-            }
-            required
-          >
-            <Input.TextArea
-              value={versionContent}
-              onChange={(e) => setVersionContent(e.target.value)}
-              rows={10}
-              style={{ fontFamily: 'monospace' }}
-              placeholder={
-                versionArtifact?.type === 'PYTHON'
-                  ? 'import argparse, csv\nap = argparse.ArgumentParser()\n...'
-                  : versionArtifact?.type === 'FUNCTION'
-                  ? 'def risk_score(balance, trans_amount):\n    ...'
-                  : 'SELECT category, count(*) c FROM src GROUP BY category'
-              }
-            />
-          </Form.Item>
-          {versionArtifact?.type === 'FUNCTION' && (
-            <>
-              <Space size="large" wrap style={{ width: '100%' }}>
-                <Form.Item
-                  name="functionName"
-                  label="函数名"
-                  rules={[{ required: true }]}
-                >
-                  <Input placeholder="例如 risk_score" style={{ width: 200 }} />
-                </Form.Item>
-                <Form.Item
-                  name="functionNargs"
-                  label="参数个数"
-                  rules={[{ required: true }]}
-                >
-                  <InputNumber min={0} max={127} style={{ width: 110 }} />
-                </Form.Item>
-              </Space>
-              <Form.Item
-                name="sqlTemplate"
-                label="调用函数 SQL"
-                rules={[{ required: true }]}
-              >
-                <Input.TextArea
-                  rows={4}
-                  style={{ fontFamily: 'monospace' }}
-                  placeholder="SELECT account_no, risk_score(balance, trans_amount) AS risk_level FROM <table>"
-                />
-              </Form.Item>
-            </>
-          )}
-          <Space style={{ width: '100%' }} align="start">
-            <Form.Item
-              name="paramsSchema"
-              label="参数声明 (JSON)"
-              style={{ width: 340 }}
-            >
-              <Input.TextArea
-                rows={3}
-                placeholder='[{"name":"filter","type":"string"}]'
-              />
-            </Form.Item>
-            <Form.Item
-              name="defaultParams"
-              label="默认参数 (JSON)"
-              style={{ width: 340 }}
-            >
-              <Input.TextArea rows={3} placeholder='{"filter":"A"}' />
-            </Form.Item>
-          </Space>
-          {(versionArtifact?.type === 'PYTHON' ||
-            versionArtifact?.type === 'FUNCTION') && (
-            <Form.Item name="dependencyNames" label="依赖库白名单">
-              <Select
-                mode="multiple"
-                allowClear
-                placeholder="选择白名单依赖（可在依赖白名单页管理）"
-                options={deps
-                  .filter((d) => d.enabled === 1)
-                  .map((d) => ({ value: d.name, label: d.name }))}
-              />
-            </Form.Item>
-          )}
-          <Form.Item name="description" label="版本说明">
-            <Input placeholder="本次改动说明" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* JAR 上传 */}
-      <Modal
-        title="上传 JAR 新版本"
-        open={jarOpen}
-        onCancel={() => setJarOpen(false)}
-        onOk={() => jarForm.submit()}
-        okButtonProps={{ disabled: !jarFile }}
-      >
-        <Form form={jarForm} layout="vertical" onFinish={saveJarUpload}>
-          <Form.Item label="JAR 文件" required>
-            <Upload.Dragger
-              beforeUpload={(file) => {
-                if (!file.name.toLowerCase().endsWith('.jar')) {
-                  message.error('仅支持 .jar 文件');
-                  return Upload.LIST_IGNORE;
-                }
-                setJarFile(file as unknown as File);
-                return false;
-              }}
-              maxCount={1}
-              accept=".jar"
-            >
-              <p>点击或拖拽 .jar 文件到此处</p>
-            </Upload.Dragger>
-          </Form.Item>
-          <Space style={{ width: '100%' }} align="start">
-            <Form.Item
-              name="paramsSchema"
-              label="参数声明 (JSON)"
-              style={{ width: 340 }}
-            >
-              <Input.TextArea
-                rows={3}
-                placeholder='[{"name":"filter","type":"string"}]'
-              />
-            </Form.Item>
-            <Form.Item
-              name="defaultParams"
-              label="默认参数 (JSON)"
-              style={{ width: 340 }}
-            >
-              <Input.TextArea rows={3} placeholder='{"filter":"A"}' />
-            </Form.Item>
-          </Space>
-          <Form.Item name="description" label="版本说明">
-            <Input placeholder="本次改动说明" />
-          </Form.Item>
           <Alert
             type="info"
             showIcon
-            message="JAR 运行契约：CLI 程序将结果 CSV 写入 --output 文件（或输出到 stdout）；长驻服务会被超时终止并判定失败。"
+            message="仅可编辑名称/描述等元数据，程序内容（代码/JAR）不可修改。"
           />
         </Form>
       </Modal>
@@ -1548,14 +1028,20 @@ export const DataDevComponent = () => {
                 style={{ width: 360 }}
                 showSearch
                 optionFilterProp="label"
-                placeholder="选择沙箱 sandbox_data.db 中的表"
+                placeholder="选择沙箱 sandbox_data.db 中的表（计算结果不可作源）"
                 onChange={onSourceTableChange}
-                options={sandboxTables.map((item) => ({
-                  value: item.tableName,
-                  label: `${item.tableName}（${item.name || item.tableName}·${
-                    item.kind === 'RESULT' ? '计算结果' : '挂载数据'
-                  }${item.source === 'SYNCED' ? '·跨节点' : ''}）`,
-                }))}
+                options={sandboxTables
+                  .filter(
+                    (item) =>
+                      item.kind === 'MOUNT' &&
+                      !String(item.tableName || '').startsWith('result_'),
+                  )
+                  .map((item) => ({
+                    value: item.tableName,
+                    label: `${item.tableName}（${item.name || item.tableName}${
+                      item.source === 'SYNCED' ? '·跨节点' : ''
+                    }）`,
+                  }))}
               />
             </Form.Item>
             <Form.Item label="源数据预览">
@@ -1570,33 +1056,22 @@ export const DataDevComponent = () => {
           {preview && renderPreviewTable(preview)}
           {taskExec === 'JAR' ? (
             <>
-              <Space size="large" wrap style={{ width: '100%' }}>
-                <Form.Item
-                  name="artifactId"
-                  label="JAR 制品"
-                  rules={[{ required: true }]}
+              <Form.Item label="JAR 文件" required>
+                <Upload.Dragger
+                  beforeUpload={(file) => {
+                    if (!file.name.toLowerCase().endsWith('.jar')) {
+                      message.error('仅支持 .jar 文件');
+                      return Upload.LIST_IGNORE;
+                    }
+                    setJarFile(file as unknown as File);
+                    return false;
+                  }}
+                  maxCount={1}
+                  accept=".jar"
                 >
-                  <Select
-                    style={{ width: 260 }}
-                    showSearch
-                    optionFilterProp="label"
-                    options={allArtifacts
-                      .filter((a) => a.type === 'JAR')
-                      .map((a) => ({
-                        value: a.id,
-                        label: `${a.name} (v${a.latest_version})`,
-                      }))}
-                  />
-                </Form.Item>
-                <Form.Item name="version" label="版本" rules={[{ required: true }]}>
-                  <Select
-                    style={{ width: 120 }}
-                    options={artifactVersions
-                      .filter((v) => v.version > 0)
-                      .map((v) => ({ value: v.version, label: `v${v.version}` }))}
-                  />
-                </Form.Item>
-              </Space>
+                  <p>点击或拖拽 .jar 文件到此处（内联上传，≤48MB）</p>
+                </Upload.Dragger>
+              </Form.Item>
               <Alert
                 type="info"
                 showIcon
@@ -1605,152 +1080,121 @@ export const DataDevComponent = () => {
             </>
           ) : (
             <>
-              <Form.Item name="source" label="脚本来源">
-                <Radio.Group
-                  optionType="button"
-                  options={[
-                    { value: 'inline', label: '内联脚本' },
-                    { value: 'artifact', label: '已有制品版本' },
-                  ]}
-                />
-              </Form.Item>
-              {taskSource === 'artifact' ? (
-                <Space size="large" wrap>
-                  <Form.Item
-                    name="artifactId"
-                    label="制品"
-                    rules={[{ required: true }]}
-                  >
-                    <Select
-                      style={{ width: 260 }}
-                      showSearch
-                      optionFilterProp="label"
-                      options={allArtifacts
-                        .filter((a) => a.type === taskExec)
-                        .map((a) => ({
-                          value: a.id,
-                          label: `${a.name} (v${a.latest_version})`,
-                        }))}
-                    />
-                  </Form.Item>
-                  <Form.Item name="version" label="版本" rules={[{ required: true }]}>
-                    <Select
-                      style={{ width: 120 }}
-                      options={artifactVersions
-                        .filter((v) => v.version > 0)
-                        .map((v) => ({ value: v.version, label: `v${v.version}` }))}
-                    />
-                  </Form.Item>
-                </Space>
-              ) : (
+              {taskExec === 'FUNCTION' && (
                 <>
-                  {taskExec === 'FUNCTION' && (
-                    <>
-                      <Space size="large" wrap style={{ width: '100%' }}>
-                        <Form.Item
-                          name="functionName"
-                          label="函数名"
-                          rules={[
-                            { required: true },
-                            {
-                              pattern: /^[a-zA-Z_][a-zA-Z0-9_]*$/,
-                              message: '需为合法 Python 标识符',
-                            },
-                          ]}
-                        >
-                          <Input placeholder="例如 risk_score" style={{ width: 200 }} />
-                        </Form.Item>
-                        <Form.Item
-                          name="functionNargs"
-                          label="参数个数"
-                          rules={[{ required: true }]}
-                        >
-                          <InputNumber min={0} max={127} style={{ width: 110 }} />
-                        </Form.Item>
-                      </Space>
-                      <Form.Item
-                        name="functionSource"
-                        label="函数源码"
-                        rules={[{ required: true }]}
-                      >
-                        <Input.TextArea
-                          rows={8}
-                          style={{ fontFamily: 'monospace' }}
-                          placeholder={
-                            'def risk_score(balance, trans_amount):\n' +
-                            '    score = 1\n' +
-                            '    ...\n' +
-                            '    return min(score, 3)'
-                          }
-                        />
-                      </Form.Item>
-                    </>
-                  )}
+                  <Space size="large" wrap style={{ width: '100%' }}>
+                    <Form.Item
+                      name="functionName"
+                      label="函数名"
+                      rules={[
+                        { required: true },
+                        {
+                          pattern: /^[a-zA-Z_][a-zA-Z0-9_]*$/,
+                          message: '需为合法 Python 标识符',
+                        },
+                      ]}
+                    >
+                      <Input placeholder="例如 risk_score" style={{ width: 200 }} />
+                    </Form.Item>
+                    <Form.Item
+                      name="functionNargs"
+                      label="参数个数"
+                      rules={[{ required: true }]}
+                    >
+                      <InputNumber min={0} max={127} style={{ width: 110 }} />
+                    </Form.Item>
+                  </Space>
                   <Form.Item
-                    name={
-                      taskExec === 'FUNCTION'
-                        ? 'sql'
-                        : taskExec === 'SQL'
-                        ? 'sql'
-                        : 'script'
-                    }
-                    label={
-                      taskExec === 'SQL'
-                        ? 'SQL 脚本'
-                        : taskExec === 'FUNCTION'
-                        ? '调用函数 SQL'
-                        : 'Python 函数'
-                    }
+                    name="functionSource"
+                    label="函数源码"
                     rules={[{ required: true }]}
                   >
                     <Input.TextArea
-                      rows={taskExec === 'FUNCTION' ? 5 : 8}
+                      rows={8}
                       style={{ fontFamily: 'monospace' }}
                       placeholder={
-                        taskExec === 'SQL'
-                          ? 'SELECT category, count(*) c FROM src GROUP BY category'
-                          : taskExec === 'FUNCTION'
-                          ? 'SELECT account_no, risk_score(balance, trans_amount) AS risk_level FROM <table>'
-                          : 'import argparse, csv\nap = argparse.ArgumentParser()\n...'
+                        'def risk_score(balance, trans_amount):\n' +
+                        '    score = 1\n' +
+                        '    ...\n' +
+                        '    return min(score, 3)'
                       }
                     />
                   </Form.Item>
-                  {taskExec === 'PYTHON' && (
-                    <Form.Item name="dependencyNames" label="依赖库白名单">
-                      <Select
-                        mode="multiple"
-                        allowClear
-                        placeholder="选择白名单依赖"
-                        options={deps
-                          .filter((d) => d.enabled === 1)
-                          .map((d) => ({ value: d.name, label: d.name }))}
-                      />
-                    </Form.Item>
-                  )}
-                  {taskExec === 'FUNCTION' && (
-                    <Alert
-                      type="info"
-                      showIcon
-                      message="函数执行契约：沙箱 DB 快照送 python-runner pod，包装器 create_function 注册 UDF 后执行下方 SQL；结果 CSV 回填。函数体顶层 import 受依赖白名单校验。"
-                    />
-                  )}
-                  <Form.Item label="保存任务">
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      <Form.Item name="saveAs" valuePropName="checked" noStyle>
-                        <Checkbox>保存脚本为制品新版本</Checkbox>
-                      </Form.Item>
-                      <Form.Item name="artifactName" noStyle>
-                        <Input
-                          placeholder="制品名称（不存在则自动创建）"
-                          style={{ width: 380 }}
-                        />
-                      </Form.Item>
-                    </Space>
-                  </Form.Item>
                 </>
+              )}
+              <Form.Item
+                name={
+                  taskExec === 'FUNCTION'
+                    ? 'sql'
+                    : taskExec === 'SQL'
+                    ? 'sql'
+                    : 'script'
+                }
+                label={
+                  taskExec === 'SQL'
+                    ? 'SQL 脚本'
+                    : taskExec === 'FUNCTION'
+                    ? '调用函数 SQL'
+                    : 'Python 函数'
+                }
+                rules={[{ required: true }]}
+              >
+                <Input.TextArea
+                  rows={taskExec === 'FUNCTION' ? 5 : 8}
+                  style={{ fontFamily: 'monospace' }}
+                  placeholder={
+                    taskExec === 'SQL'
+                      ? 'SELECT category, count(*) c FROM src GROUP BY category'
+                      : taskExec === 'FUNCTION'
+                      ? 'SELECT account_no, risk_score(balance, trans_amount) AS risk_level FROM <table>'
+                      : 'import argparse, csv\nap = argparse.ArgumentParser()\n...'
+                  }
+                />
+              </Form.Item>
+              {taskExec === 'FUNCTION' && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="函数执行契约：沙箱 DB 快照送 python-runner pod，包装器 create_function 注册 UDF 后执行下方 SQL；结果 CSV 回填。脚本 import 的库若缺失，运行时自动 pip 安装并记录本次导入。"
+                />
               )}
             </>
           )}
+          <Space size="large" wrap style={{ width: '100%' }}>
+            <Form.Item
+              name="artifactName"
+              label="制品名称（可选）"
+              tooltip="留空不保存制品；选择已有制品发布新版本，输入新名称则自动新建制品（查重）"
+            >
+              <AutoComplete
+                allowClear
+                style={{ width: 360 }}
+                placeholder={
+                  taskExec === 'JAR'
+                    ? '选择已有 JAR 制品发布新版本，或输入新名称'
+                    : '选择已有脚本制品发布新版本，或输入新名称'
+                }
+                options={allArtifacts
+                  .filter((a) => a.type === taskExec)
+                  .map((a) => ({ value: a.name, label: a.name }))}
+              />
+            </Form.Item>
+            {allArtifacts.some(
+              (a) => a.name === taskArtifactName && a.type === taskExec,
+            ) && (
+              <Form.Item
+                name="version"
+                label="版本号（已有制品发布新版本）"
+                tooltip="手填版本号，与已有版本重复将报错；留空自动递增"
+              >
+                <InputNumber
+                  min={1}
+                  style={{ width: 150 }}
+                  placeholder="留空自动 v++"
+                />
+              </Form.Item>
+            )}
+          </Space>
           <Space size="large" wrap style={{ width: '100%' }} align="start">
             <Form.Item
               name="params"
@@ -1952,102 +1396,16 @@ export const DataDevComponent = () => {
               </Space>
               {renderPreviewTable(resultItem.preview)}
               {resultItem.runMode === 'PROD' && (
-                <Space>
-                  <Button type="primary" onClick={() => openMount(resultItem)}>
-                    挂载到项目
-                  </Button>
-                </Space>
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="计算结果仅支持预览与导出（数据目录），不能挂载到项目，也不能作为沙箱计算源。"
+                />
               )}
             </Space>
           )
         )}
       </Drawer>
-
-      {/* 挂载项目 */}
-      <Modal
-        title="挂载结果到项目"
-        open={!!mountTask}
-        onCancel={() => setMountTask(undefined)}
-        onOk={mountResult}
-      >
-        <Form layout="vertical">
-          <Form.Item label="结果数据集">
-            {mountTask
-              ? `${mountTask.resultNodeId || mountTask.result_node_id}/${
-                  mountTask.resultDatatableId || mountTask.result_datatable_id
-                }`
-              : ''}
-          </Form.Item>
-          <Form.Item label="目标项目" required>
-            <Select
-              value={mountTask?.mountProjectId}
-              onChange={(v) =>
-                setMountTask({ ...(mountTask as DataSandboxRecord), mountProjectId: v })
-              }
-              showSearch
-              optionFilterProp="label"
-              placeholder="选择项目"
-              options={(projects || []).map((p) => ({ value: p.id, label: p.name }))}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* SQL 工作台：保存为制品 */}
-      <Modal
-        title="保存 SQL 为制品"
-        open={wsSaveOpen}
-        onCancel={() => setWsSaveOpen(false)}
-        onOk={wsSave}
-      >
-        <Form layout="vertical">
-          <Form.Item label="制品名称" required>
-            <Input
-              value={wsSaveArtifact}
-              onChange={(e) => setWsSaveArtifact(e.target.value)}
-              placeholder="例如：月度统计 SQL（不存在则自动创建制品）"
-            />
-          </Form.Item>
-          <Alert
-            type="info"
-            showIcon
-            message="保存为 SQL 制品的新版本（版本自增，不可变），可在「制品管理」查看历史版本。"
-          />
-        </Form>
-      </Modal>
-
-      {/* 依赖 新建/编辑 */}
-      <Modal
-        title={depItem?.id ? `编辑依赖：${depItem.name}` : '新增白名单依赖'}
-        open={depOpen}
-        onCancel={() => setDepOpen(false)}
-        onOk={() => depForm.submit()}
-      >
-        <Form form={depForm} layout="vertical" onFinish={saveDep}>
-          <Form.Item
-            name="name"
-            label="依赖名"
-            rules={[{ required: true }]}
-            tooltip="注意：须与 data-sandbox-python-runner 镜像内预装包一致，否则运行时 import 被守卫拒绝"
-          >
-            <Input placeholder="例如 scipy" />
-          </Form.Item>
-          <Form.Item name="versionSpec" label="版本约束">
-            <Input placeholder="例如 >=1.10" />
-          </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item name="enabled" label="启用" initialValue>
-            <Radio.Group
-              options={[
-                { value: true, label: '启用' },
-                { value: false, label: '停用' },
-              ]}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
     </MvpPage>
   );
 };

@@ -43,6 +43,8 @@ import { getModel, Model, useModel } from '@/util/valtio-helper';
 import ModificationResultDrawer from '../../component-config/config-item-render/custom-render/linear-model-parameters-modification/drawer/index';
 import { ProjectListComponent } from '../header-project-list/project-list.view';
 
+import { SandboxCanvasWorkspace } from '../../sandbox-canvas';
+
 import styles from './index.less';
 
 const tabItems: TabsProps['items'] = [
@@ -75,7 +77,13 @@ export const DagLayout = () => {
   const loginService = useModel(LoginService);
   const slsLogService = useModel(SlsService);
 
-  const { type = 'DAG', mode, projectId, sandboxId } = parse(window.location.search);
+  const {
+    type = 'DAG',
+    mode,
+    projectId,
+    sandboxId,
+    computeCanvasId,
+  } = parse(window.location.search);
   const goBack = async () => {
     viewInstance.setInitActiveMenu(DagLayoutMenu.MODELTRAIN);
     const userInfo = await loginService.getUserInfo();
@@ -189,6 +197,11 @@ export const DagLayout = () => {
       disabled: !slsLogService.slsLogIsConfig,
       children: <SlsLog />,
     });
+  }
+
+  // 沙箱可视化建模画布：进入 computeCanvasId 画布时切换为沙箱画布形态
+  if (computeCanvasId) {
+    return <SandboxCanvasWorkspace />;
   }
 
   return (

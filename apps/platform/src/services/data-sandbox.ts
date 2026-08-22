@@ -258,6 +258,46 @@ export const DataComputeApi = {
     if (!response.ok) throw new Error(`沙箱数据库下载失败: HTTP ${response.status}`);
     return response.blob();
   },
+  // 单表 CSV 导出（MOUNT/RESULT 表均可导出，结果表仅预览+导出、不可消费/挂载）
+  sandboxDbTableExport: async (sandboxId: string, tableName: string) => {
+    const query = new URLSearchParams({ sandboxId, tableName });
+    const response = await fetch(`${computeBase}/sandbox-db/table-export?${query}`, {
+      credentials: 'include',
+      headers: {
+        'User-Token': localStorage.getItem('User-Token') || '',
+        'Trace-Id': `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      },
+    });
+    if (!response.ok) throw new Error(`表格导出失败: HTTP ${response.status}`);
+    return response.blob();
+  },
+  /* 可视化建模画布（智能建模闭环）：执行 / 状态 / 节点输出日志 / 数据资源 / 模板 / 版本 */
+  canvasRun: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/canvas/run', data),
+  canvasStopRun: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/canvas/run/stop', data),
+  canvasRunStatus: (canvasId: string) =>
+    computeGet<DataSandboxRecord>('/canvas/run/status', { canvasId }),
+  canvasRuns: (canvasId: string) =>
+    computeGet<DataSandboxRecord[]>('/canvas/runs', { canvasId }),
+  canvasNodeOutput: (canvasId: string, nodeId: string, limit = 50) =>
+    computeGet<DataSandboxRecord>('/canvas/node/output', { canvasId, nodeId, limit }),
+  canvasNodeLogs: (canvasId: string, nodeId: string, runId = '') =>
+    computeGet<DataSandboxRecord>('/canvas/node/logs', { canvasId, nodeId, runId }),
+  canvasDataResources: (sandboxId: string) =>
+    computeGet<DataSandboxRecord>('/canvas/data-resources', { sandboxId }),
+  canvasTemplates: () => computeGet<DataSandboxRecord[]>('/canvas/templates'),
+  canvasImportTemplate: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/canvas/templates/import', data),
+  canvasVersions: (canvasId: string) =>
+    computeGet<DataSandboxRecord[]>('/canvas/versions', { canvasId }),
+  canvasRollbackVersion: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/canvas/versions/rollback', data),
+  canvasCompareVersions: (versionIdA: string, versionIdB: string) =>
+    computeGet<DataSandboxRecord>('/canvas/versions/compare', {
+      versionIdA,
+      versionIdB,
+    }),
 };
 
 // Z-04 数据治理（抽样/脱敏）：独立前缀 /api/v1alpha1/data-governance
@@ -368,6 +408,8 @@ export const DataDevApi = {
     formData.append('paramsSchema', meta.paramsSchema || '[]');
     formData.append('defaultParams', meta.defaultParams || '{}');
     formData.append('description', meta.description || '');
+    // 版本号用户手填（可选）：不填后端自动递增；填了需与已有版本不重复
+    if (meta.version) formData.append('version', String(meta.version));
     return devUpload<DataSandboxRecord>(
       '/artifacts/versions/upload',
       formData,
@@ -483,6 +525,9 @@ export const DataModelApi = {
   /* API 发布 */
   createApi: (data: DataSandboxRecord) =>
     modelApiPost<DataSandboxRecord>('/create', data),
+  /* 制品(选版本) → API 一键发布：自动注册 APPROVED 模型 + 自动建 API */
+  createApiFromArtifact: (data: DataSandboxRecord) =>
+    modelApiPost<DataSandboxRecord>('/create-from-artifact', data),
   apis: (params?: DataSandboxRecord) =>
     modelApiGet<DataSandboxRecord[]>('/list', params),
   apiDetail: (id: string) => modelApiGet<DataSandboxRecord>('/detail', { id }),

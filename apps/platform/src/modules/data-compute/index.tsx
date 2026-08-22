@@ -358,6 +358,22 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
       message.error(e.message || '数据预览失败');
     }
   };
+  const exportTable = async (tableName: string) => {
+    try {
+      const blob = await DataComputeApi.sandboxDbTableExport(sandboxId, tableName);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${tableName.replace(/[^a-zA-Z0-9_-]/g, '_')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      message.success(`已导出 ${tableName}.csv`);
+    } catch (e: any) {
+      message.error(e.message || '导出失败');
+    }
+  };
   const mountRows = (data.items || [])
     .filter((r: DataSandboxRecord) => r.kind === 'MOUNT')
     .map((row: DataSandboxRecord) => ({ ...row, _kind: 'mount' }));
@@ -401,13 +417,22 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
     {
       title: '操作',
       render: (_: any, r: DataSandboxRecord) => (
-        <Button
-          type="link"
-          disabled={!r.tableName}
-          onClick={() => previewTable(r.tableName)}
-        >
-          预览20行
-        </Button>
+        <Space>
+          <Button
+            type="link"
+            disabled={!r.tableName}
+            onClick={() => previewTable(r.tableName)}
+          >
+            预览
+          </Button>
+          <Button
+            type="link"
+            disabled={!r.tableName}
+            onClick={() => exportTable(r.tableName)}
+          >
+            导出
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -426,7 +451,7 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
       />
       <Modal
         width={900}
-        title={`数据预览（${preview?.tableName || ''} 前20行）`}
+        title={`数据预览（${preview?.tableName || ''}）`}
         open={!!preview}
         onCancel={() => setPreview(undefined)}
         footer={null}
@@ -523,7 +548,9 @@ export const DataComputeEntryComponent = () => {
 };
 
 export const CustomAlgorithmComponent = () => (
-  <ComputeContext requireUse>{() => <ModelCenterComponent />}</ComputeContext>
+  <ComputeContext requireUse>
+    {(ctx) => <ModelCenterComponent context={ctx} />}
+  </ComputeContext>
 );
 
 export const ModelingComponentsComponent = () => (

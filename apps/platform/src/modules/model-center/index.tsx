@@ -23,7 +23,6 @@ import {
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
-import { listP2PProject } from '@/services/secretpad/P2PProjectController';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
 
 const modelStatusLabels: Record<string, string> = {
@@ -168,7 +167,7 @@ const SummaryTable = ({ summary: summaryRaw }: { summary: unknown }) => {
   );
 };
 
-export const ModelCenterComponent = () => {
+export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord }) => {
   /* ------------------------------- 模型注册 ------------------------------- */
   const [models, setModels] = useState<DataSandboxRecord[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -176,7 +175,7 @@ export const ModelCenterComponent = () => {
   const [modelKeyword, setModelKeyword] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registerForm] = Form.useForm();
-  const [projects, setProjects] = useState<DataSandboxRecord[]>([]);
+  // 注册模型弹窗：所属项目由沙箱上下文自动注入（context.project/sandbox.project_id），无需用户选择
   const [jarArtifacts, setJarArtifacts] = useState<DataSandboxRecord[]>([]);
   const regArtifactId = Form.useWatch('artifactId', registerForm);
   const [regVersions, setRegVersions] = useState<DataSandboxRecord[]>([]);
@@ -211,6 +210,16 @@ export const ModelCenterComponent = () => {
   const [apiDetailOpen, setApiDetailOpen] = useState(false);
   const [apiDetailItem, setApiDetailItem] = useState<DataSandboxRecord>();
   const [apiUpdateForm] = Form.useForm();
+  /* 从沙箱制品一键发布（自动注册 APPROVED 模型 + 建 API） */
+  const [artifactCreateOpen, setArtifactCreateOpen] = useState(false);
+  const [artifactCreateForm] = Form.useForm();
+  const [artifactCreateArtifacts, setArtifactCreateArtifacts] = useState<
+    DataSandboxRecord[]
+  >([]);
+  const artifactCreateArtifactId = Form.useWatch('artifactId', artifactCreateForm);
+  const [artifactCreateVersions, setArtifactCreateVersions] = useState<
+    DataSandboxRecord[]
+  >([]);
   const [invokeRows, setInvokeRows] = useState('[\n  {"id": 1, "score": 60}\n]');
   const [invokeResult, setInvokeResult] = useState<DataSandboxRecord>();
   const [invokeLoading, setInvokeLoading] = useState(false);
@@ -289,7 +298,6 @@ export const ModelCenterComponent = () => {
 
   useEffect(() => {
     if (registerOpen) {
-      listP2PProject().then((res) => setProjects(responseData(res, [])));
       DataDevApi.artifacts({ type: 'JAR' }).then((res) =>
         setJarArtifacts(
           responseData(res, []).filter((a) => a.type === 'JAR' || a.type === 'PYTHON'),
@@ -320,6 +328,26 @@ export const ModelCenterComponent = () => {
     }
   }, [apiCreateOpen]);
 
+  useEffect(() => {
+    if (artifactCreateOpen) {
+      DataDevApi.artifacts({ type: 'PYTHON' }).then((res) =>
+        setArtifactCreateArtifacts(
+          responseData(res, []).filter((a) => a.type === 'PYTHON'),
+        ),
+      );
+    }
+  }, [artifactCreateOpen]);
+
+  useEffect(() => {
+    if (artifactCreateArtifactId) {
+      DataDevApi.versions(artifactCreateArtifactId).then((res) =>
+        setArtifactCreateVersions(responseData(res, [])),
+      );
+    } else {
+      setArtifactCreateVersions([]);
+    }
+  }, [artifactCreateArtifactId]);
+
   /* ------------------------------- 模型操作 ------------------------------- */
 
   const openRegister = () => {
@@ -329,11 +357,14 @@ export const ModelCenterComponent = () => {
 
   const registerModel = async () => {
     const values = await registerForm.validateFields();
+    // 沙箱上下文内项目唯一，无需再让用户选择：取当前沙箱所属项目（兜底保留表单值）
+    const projectId =
+      context?.project?.project_id || context?.sandbox?.project_id || values.projectId;
     try {
       responseData(
         await DataModelApi.register({
           name: values.name,
-          projectId: values.projectId,
+          projectId,
           artifactId: values.artifactId,
           artifactVersionId: values.artifactVersionId,
           description: values.description || '',
@@ -531,6 +562,37 @@ export const ModelCenterComponent = () => {
       );
       message.success('API 已发布');
       setApiCreateOpen(false);
+      refreshApis();
+      refreshModels();
+      setApiDetailItem(api);
+      setApiDetailOpen(true);
+    } catch (error: any) {
+      message.error(error.message || '发布失败');
+    }
+  };
+
+  /** 从沙箱制品（PYTHON，选版本）一键发布：自动注册 APPROVED 模型 + 建 API，返回 app_id/app_secret */
+  const createApiFromArtifact = async () => {
+    const values = await artifactCreateForm.validateFields();
+    try {
+      const api = responseData(
+        await DataModelApi.createApiFromArtifact({
+          artifactId: values.artifactId,
+          artifactVersionId: values.artifactVersionId,
+          name: values.name,
+          description: values.description || '',
+          // 沙箱上下文自动注入所属项目与沙箱（后端 createFromArtifact 依赖 projectId）
+          projectId: context?.project?.project_id || context?.sandbox?.project_id || '',
+          sandboxId: context?.sandbox?.id || '',
+          authorizedUsers: values.authorizedUsers || [],
+          ipWhitelist: values.ipWhitelist || [],
+          validFrom: values.validFrom || '',
+          validTo: values.validTo || '',
+        }),
+        {},
+      );
+      message.success('制品已自动注册模型并发布 API');
+      setArtifactCreateOpen(false);
       refreshApis();
       refreshModels();
       setApiDetailItem(api);
@@ -1021,6 +1083,14 @@ export const ModelCenterComponent = () => {
                   >
                     发布 API
                   </Button>
+                  <Button
+                    onClick={() => {
+                      artifactCreateForm.resetFields();
+                      setArtifactCreateOpen(true);
+                    }}
+                  >
+                    从制品发布
+                  </Button>
                 </Space>
                 <Table
                   rowKey="id"
@@ -1051,16 +1121,6 @@ export const ModelCenterComponent = () => {
             rules={[{ required: true, message: '请输入模型名称' }]}
           >
             <Input placeholder="如：信贷风控评分模型" />
-          </Form.Item>
-          <Form.Item
-            name="projectId"
-            label="所属项目"
-            rules={[{ required: true, message: '请选择项目' }]}
-          >
-            <Select
-              placeholder="选择项目"
-              options={(projects || []).map((p) => ({ value: p.id, label: p.name }))}
-            />
           </Form.Item>
           <Form.Item
             name="artifactId"
@@ -1532,6 +1592,71 @@ export const ModelCenterComponent = () => {
             rules={[{ required: true, message: '请输入名称' }]}
           >
             <Input placeholder="如：信贷评分服务" />
+          </Form.Item>
+          <Form.Item name="authorizedUsers" label="授权用户（空=仅凭据调用）">
+            <Select mode="tags" placeholder="输入用户名后回车，如 bob" open={false} />
+          </Form.Item>
+          <Form.Item name="ipWhitelist" label="IP 白名单（空=任意 IP；支持 CIDR）">
+            <Select mode="tags" placeholder="如 10.0.0.0/8、1.2.3.4" open={false} />
+          </Form.Item>
+          <Form.Item name="validFrom" label="生效时间（yyyy-MM-dd HH:mm:ss，空=不限）">
+            <Input placeholder="2026-08-01 00:00:00" />
+          </Form.Item>
+          <Form.Item name="validTo" label="失效时间（yyyy-MM-dd HH:mm:ss，空=不限）">
+            <Input placeholder="2026-12-31 23:59:59" />
+          </Form.Item>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 从沙箱制品一键发布 API */}
+      <Modal
+        title="从沙箱制品一键发布 API"
+        open={artifactCreateOpen}
+        onOk={createApiFromArtifact}
+        onCancel={() => setArtifactCreateOpen(false)}
+        destroyOnClose
+        width={560}
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          选择 PYTHON 制品 + 版本，系统将自动注册 APPROVED 模型并创建受控 API
+          （app_id/app_secret 一次性返回）
+        </Typography.Paragraph>
+        <Form form={artifactCreateForm} layout="vertical">
+          <Form.Item
+            name="artifactId"
+            label="沙箱制品（PYTHON）"
+            rules={[{ required: true, message: '请选择制品' }]}
+          >
+            <Select
+              placeholder="选择 PYTHON 制品（如画布训练自动产物）"
+              options={artifactCreateArtifacts.map((a) => ({
+                value: a.id,
+                label: `${a.name} · ${a.type}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="artifactVersionId"
+            label="制品版本"
+            rules={[{ required: true, message: '请选择版本' }]}
+          >
+            <Select
+              placeholder="选择该制品的一个版本"
+              options={artifactCreateVersions.map((v) => ({
+                value: v.id,
+                label: `v${v.version} · ${v.created_at || ''}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="name"
+            label="API 名称"
+            rules={[{ required: true, message: '请输入名称' }]}
+          >
+            <Input placeholder="如：信贷评分服务（制品）" />
           </Form.Item>
           <Form.Item name="authorizedUsers" label="授权用户（空=仅凭据调用）">
             <Select mode="tags" placeholder="输入用户名后回车，如 bob" open={false} />
