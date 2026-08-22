@@ -105,22 +105,28 @@ export const AuthProjectTag = (props: IProps) => {
     if (!voteId || !project.projectId) return;
     setApproveLoading(true);
     try {
-      if (assetIds.length) {
-        responseData(
-          await DataAssetApi.attachProjectAssets({
-            projectId: project.projectId,
-            assetIds,
-          }),
-          [],
-        );
-      }
       const success = await viewInstance.process(StatusEnum.AGREE, voteId, pathname);
-      if (success) {
-        setApproveOpen(false);
-        approveForm.resetFields();
+      if (!success) return;
+
+      if (assetIds.length) {
+        try {
+          responseData(
+            await DataAssetApi.attachProjectAssets({
+              projectId: project.projectId,
+              assetIds,
+            }),
+            [],
+          );
+        } catch (error: any) {
+          message.warning(
+            `项目已同意，数据挂载失败：${error.message || '请稍后在项目中重试'}`,
+          );
+        }
       }
+      setApproveOpen(false);
+      approveForm.resetFields();
     } catch (error: any) {
-      message.error(error.message || '同意项目并挂载数据失败');
+      message.error(error.message || '同意项目失败');
     } finally {
       setApproveLoading(false);
     }
