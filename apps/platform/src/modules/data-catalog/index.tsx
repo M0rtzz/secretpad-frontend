@@ -80,7 +80,7 @@ export const DataCatalogComponent = () => {
     setAddLoading(true);
     try {
       const headers = values.headers ? JSON.parse(values.headers) : {};
-      await DataAssetApi.createApiSnapshot({ ...values, headers });
+      responseData(await DataAssetApi.createApiSnapshot({ ...values, headers }), {});
       message.success('API 快照已添加');
       setAddOpen(false);
       apiForm.resetFields();
