@@ -1,4 +1,4 @@
-import { ActionType, NodeStatus } from '@secretflow/dag';
+import { ActionType, NodeStatus, Portal, ShowMenuContext } from '@secretflow/dag';
 import type { Node } from '@antv/x6';
 import {
   ArrowLeftOutlined,
@@ -58,6 +58,8 @@ const CATEGORY_ORDER = [
   '机器学习',
   '模型评估',
 ];
+
+const X6ReactPortalProvider = Portal.getProvider();
 
 class SandboxGraphEventHandler implements GraphEventHandlerProtocol {
   onNodeClick = (node: Node) => {
@@ -441,6 +443,9 @@ export const SandboxCanvasWorkspace = () => {
           <Tabs size="small" items={leftItems} />
         </div>
         <div className={styles.center}>
+          <ShowMenuContext.Provider value={false}>
+            <X6ReactPortalProvider />
+          </ShowMenuContext.Provider>
           <div className={styles.graph} ref={containerRef} />
           <div className={styles.zoomBar}>
             <Tooltip title="放大">
