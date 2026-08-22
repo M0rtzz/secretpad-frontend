@@ -16,7 +16,6 @@ import { history, useLocation } from 'umi';
 
 import { EdgeRouteWrapper, isP2PWorkbench } from '@/components/platform-wrapper';
 import { P2PCreateProjectModal } from '@/modules/create-project/p2p-create-project/p2p-create-project.view';
-import { ProjectType } from '@/modules/create-project/p2p-create-project/compute-func-data';
 import { formatBeijingTimestamp, formatTimestamp } from '@/modules/dag-result/utils';
 import { DataAssetPreviewTable } from '@/modules/data-catalog/preview-table';
 import { EditProjectModal } from '@/modules/project-list/components/edit-project';
@@ -48,7 +47,6 @@ import {
   RadioGroupState,
 } from '../p2p-project-list/components/common';
 
-import { ProjectTypeTag } from './components/project-type-tag';
 import styles from './index.less';
 import { P2pProjectListService } from './p2p-project-list.service';
 
@@ -243,22 +241,7 @@ export const P2pProjectListComponent: React.FC = () => {
                           <span>已归档</span>
                         </div>
                       )}
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        {(item.developmentModes || []).map((mode: string) => (
-                          <Tag key={mode} color="blue">
-                            {{
-                              SQL: 'SQL',
-                              PYTHON: 'Python',
-                              FUNCTION_ECOSYSTEM: '函数与生态库管理',
-                              JAR: 'JAR 计算',
-                            }[mode] || mode}
-                          </Tag>
-                        ))}
-                        <div style={{ marginRight: 8 }}>
-                          <ProjectTypeTag
-                            type={(item.computeFunc || 'DAG') as ProjectType}
-                          />
-                        </div>
+                      <div className={styles.header}>
                         <div className={styles.header} style={{ flex: 1 }}>
                           <Tooltip title={item.projectName}>
                             <Title
@@ -281,6 +264,18 @@ export const P2pProjectListComponent: React.FC = () => {
                               />
                             )}
                         </div>
+                      </div>
+                      <div className={styles.projectModes}>
+                        {(item.developmentModes || []).map((mode: string) => (
+                          <Tag key={mode} color="blue">
+                            {{
+                              SQL: 'SQL',
+                              PYTHON: 'Python',
+                              FUNCTION_ECOSYSTEM: '函数与生态库管理',
+                              JAR: 'JAR 计算',
+                            }[mode] || mode}
+                          </Tag>
+                        ))}
                       </div>
                       <Paragraph ellipsis={{ rows: 1 }} className={styles.ellipsisDesc}>
                         {item.description || '暂无描述'}
@@ -477,7 +472,7 @@ export const P2pProjectListComponent: React.FC = () => {
                 <Button
                   type="link"
                   onClick={async () => {
-                    if (row.owned === false) {
+                    if (row.owned === false && row.modality !== 'IMAGE') {
                       setPreview({
                         asset: row,
                         columns: row.schema_columns || [],
@@ -489,7 +484,7 @@ export const P2pProjectListComponent: React.FC = () => {
                     setPreview(responseData(await DataAssetApi.preview(row.id, 5), {}));
                   }}
                 >
-                  格式预览
+                  预览
                 </Button>
               ),
             },

@@ -200,6 +200,8 @@ export const DataAssetApi = {
     assetPost<DataSandboxRecord>('/api-snapshots', data),
   previewDatabase: (data: DataSandboxRecord) =>
     assetPost<DataSandboxRecord>('/database/preview', data),
+  testDatabase: (data: DataSandboxRecord) =>
+    assetPost<{ connected: boolean; tables: string[] }>('/database/test', data),
   importDatabase: (data: DataSandboxRecord) =>
     assetPost<DataSandboxRecord>('/database/import', data),
   sandboxMounts: (sandboxId: string) =>

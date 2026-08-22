@@ -1,11 +1,20 @@
 import dotenv from 'dotenv';
+import path from 'path';
 import { defineConfig } from 'umi';
 
 import { routes } from './routes';
 
+const sharedEnvPath = path.resolve(
+  __dirname,
+  '../../../../data-sandbox-package/data-sandbox.env',
+);
+dotenv.config({ path: process.env.DATA_SANDBOX_ENV_FILE || sharedEnvPath });
+const localEnv = dotenv.config().parsed || {};
+const env = { ...process.env, ...localEnv };
+
 let proxyOptions;
 try {
-  const config = dotenv.config().parsed;
+  const config = env;
   if (!config || !config?.PROXY_URL) {
     throw new Error();
   }
@@ -41,6 +50,30 @@ export default defineConfig({
   // an upgrade, a browser can combine a cached chunk with the new runtime and
   // fail in webpack's module loader. Content hashes make each build immutable.
   hash: true,
+  define: Object.fromEntries(
+    [
+      'DB_MYSQL55_PORT',
+      'DB_MYSQL80_PORT',
+      'DB_POSTGRES_PORT',
+      'DB_GREATSQL_PORT',
+      'DB_OPENGAUSS_PORT',
+      'DB_MYSQL55_DATABASE',
+      'DB_MYSQL80_DATABASE',
+      'DB_POSTGRES_DATABASE',
+      'DB_GREATSQL_DATABASE',
+      'DB_OPENGAUSS_DATABASE',
+      'DB_MYSQL55_USER',
+      'DB_MYSQL80_USER',
+      'DB_POSTGRES_USER',
+      'DB_GREATSQL_USER',
+      'DB_OPENGAUSS_USER',
+      'DB_MYSQL55_PASSWORD',
+      'DB_MYSQL80_PASSWORD',
+      'DB_POSTGRES_PASSWORD',
+      'DB_GREATSQL_PASSWORD',
+      'DB_OPENGAUSS_PASSWORD',
+    ].map((key) => [`process.env.${key}`, env[key] || '']),
+  ),
   codeSplitting: {
     jsStrategy: 'granularChunks',
   },

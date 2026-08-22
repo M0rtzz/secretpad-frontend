@@ -386,7 +386,7 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
           disabled={!r.asset_id && !r.result_asset_id}
           onClick={() => previewAsset(r.asset_id || r.result_asset_id)}
         >
-          预览前10行
+          预览
         </Button>
       ),
     },

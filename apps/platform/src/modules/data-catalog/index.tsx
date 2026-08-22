@@ -2,7 +2,6 @@ import {
   Button,
   Form,
   Input,
-  InputNumber,
   message,
   Modal,
   Popconfirm,
@@ -15,12 +14,11 @@ import {
   Segmented,
   Tabs,
 } from 'antd';
-import { UploadOutlined, DatabaseOutlined, ApiOutlined } from '@ant-design/icons';
+import { UploadOutlined, ApiOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
 
 import { MvpPage, RefreshButton, formatTime } from '@/modules/data-sandbox-mvp/common';
 import { DataAssetApi, DataSandboxRecord, responseData } from '@/services/data-sandbox';
-import { DataSourceListComponent } from '@/modules/data-source-list';
 
 import { DataAssetPreviewTable } from './preview-table';
 
@@ -30,7 +28,6 @@ export const DataCatalogComponent = () => {
   const [keyword, setKeyword] = useState('');
   const [preview, setPreview] = useState<DataSandboxRecord>();
   const [projectAsset, setProjectAsset] = useState<DataSandboxRecord>();
-  const [view, setView] = useState<'assets' | 'sources'>('assets');
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState('file');
   const [apiForm] = Form.useForm();
@@ -38,9 +35,74 @@ export const DataCatalogComponent = () => {
   const [databasePreview, setDatabasePreview] = useState<DataSandboxRecord>();
   const [databaseLoading, setDatabaseLoading] = useState(false);
   const databaseType = Form.useWatch('databaseType', databaseForm);
-  const queryMode = Form.useWatch('queryMode', databaseForm);
+  const mysqlVersion = Form.useWatch('mysqlVersion', databaseForm);
+  const [databaseTables, setDatabaseTables] = useState<string[]>([]);
+  const [selectedDatabaseTables, setSelectedDatabaseTables] = useState<string[]>([]);
   const [fileName, setFileName] = useState('');
   const [addLoading, setAddLoading] = useState(false);
+
+  const jdbcUrlFor = (type: string) => {
+    switch (type) {
+      case 'POSTGRESQL':
+        return `jdbc:postgresql://host.docker.internal:${
+          process.env.DB_POSTGRES_PORT || '15432'
+        }/${process.env.DB_POSTGRES_DATABASE || 'demo'}`;
+      case 'GREATSQL':
+        return `jdbc:mysql://host.docker.internal:${
+          process.env.DB_GREATSQL_PORT || '13308'
+        }/${
+          process.env.DB_GREATSQL_DATABASE || 'demo'
+        }?characterEncoding=UTF-8&useUnicode=true&connectionCollation=utf8mb4_unicode_ci&useSSL=false&allowPublicKeyRetrieval=true`;
+      case 'OPENGAUSS':
+        return `jdbc:opengauss://host.docker.internal:${
+          process.env.DB_OPENGAUSS_PORT || '15433'
+        }/${process.env.DB_OPENGAUSS_DATABASE || 'demo'}`;
+      default:
+        return mysqlJdbcUrlFor(mysqlVersion || '6.0+');
+    }
+  };
+
+  const mysqlJdbcUrlFor = (version: string) =>
+    `jdbc:mysql://host.docker.internal:${
+      version === '5.1'
+        ? process.env.DB_MYSQL55_PORT || '13306'
+        : process.env.DB_MYSQL80_PORT || '13307'
+    }/${
+      version === '5.1'
+        ? process.env.DB_MYSQL55_DATABASE || 'demo'
+        : process.env.DB_MYSQL80_DATABASE || 'demo'
+    }?characterEncoding=UTF-8&useUnicode=true&connectionCollation=utf8mb4_unicode_ci&useSSL=false&allowPublicKeyRetrieval=true`;
+
+  const credentialsFor = (type: string) => {
+    switch (type) {
+      case 'POSTGRESQL':
+        return {
+          username: process.env.DB_POSTGRES_USER || 'postgresql',
+          password: process.env.DB_POSTGRES_PASSWORD || 'Test@123456',
+        };
+      case 'GREATSQL':
+        return {
+          username: process.env.DB_GREATSQL_USER || 'greatsql',
+          password: process.env.DB_GREATSQL_PASSWORD || 'Test@123456',
+        };
+      case 'OPENGAUSS':
+        return {
+          username: process.env.DB_OPENGAUSS_USER || 'opengauss_remote',
+          password: process.env.DB_OPENGAUSS_PASSWORD || 'Test@123456',
+        };
+      default:
+        return {
+          username:
+            mysqlVersion === '5.1'
+              ? process.env.DB_MYSQL55_USER || 'mysql'
+              : process.env.DB_MYSQL80_USER || 'mysql',
+          password:
+            mysqlVersion === '5.1'
+              ? process.env.DB_MYSQL55_PASSWORD || 'Test@123456'
+              : process.env.DB_MYSQL80_PASSWORD || 'Test@123456',
+        };
+    }
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -92,18 +154,50 @@ export const DataCatalogComponent = () => {
     }
   };
 
-  const databaseRequest = (values: DataSandboxRecord) => ({
+  const databaseRequest = (values: DataSandboxRecord, tableName = '') => ({
     ...values,
-    tableName: values.queryMode === 'table' ? values.tableName : '',
-    sql: values.queryMode === 'sql' ? values.sql : '',
+    tableName,
+    sql: '',
   });
+
+  const testDatabase = async () => {
+    try {
+      const values = await databaseForm.validateFields();
+      setDatabaseLoading(true);
+      const result = responseData(
+        await DataAssetApi.testDatabase(databaseRequest(values)),
+        {
+          connected: false,
+          tables: [],
+        },
+      );
+      setDatabaseTables(result.tables || []);
+      setSelectedDatabaseTables([]);
+      setDatabasePreview(undefined);
+      message.success(`连接成功，发现 ${result.tables?.length || 0} 张表`);
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error.message || '数据库连接失败');
+    } finally {
+      setDatabaseLoading(false);
+    }
+  };
 
   const previewDatabase = async () => {
     try {
       const values = await databaseForm.validateFields();
       setDatabaseLoading(true);
+      if (!selectedDatabaseTables.length) {
+        message.warning('请先测试连接并选择至少一张表');
+        return;
+      }
       setDatabasePreview(
-        responseData(await DataAssetApi.previewDatabase(databaseRequest(values)), {}),
+        responseData(
+          await DataAssetApi.previewDatabase(
+            databaseRequest(values, selectedDatabaseTables[0]),
+          ),
+          {},
+        ),
       );
     } catch (error: any) {
       if (error?.errorFields) return;
@@ -117,10 +211,31 @@ export const DataCatalogComponent = () => {
     try {
       const values = await databaseForm.validateFields();
       setDatabaseLoading(true);
-      responseData(await DataAssetApi.importDatabase(databaseRequest(values)), {});
-      message.success('库表数据已落盘并注册为本地数据资产');
+      if (!selectedDatabaseTables.length) {
+        message.warning('请先测试连接并选择至少一张表');
+        return;
+      }
+      const baseName = String(values.name || '').trim();
+      const multipleTables = selectedDatabaseTables.length > 1;
+      await Promise.all(
+        selectedDatabaseTables.map((tableName) =>
+          DataAssetApi.importDatabase({
+            ...databaseRequest(values, tableName),
+            ...(multipleTables
+              ? {
+                  name: `${baseName || '数据库导入'} · ${
+                    tableName.split('.').pop() || tableName
+                  }`,
+                }
+              : {}),
+          }),
+        ),
+      );
+      message.success(`已保存 ${selectedDatabaseTables.length} 个数据资产`);
       setAddOpen(false);
       setDatabasePreview(undefined);
+      setDatabaseTables([]);
+      setSelectedDatabaseTables([]);
       databaseForm.resetFields();
       refresh();
     } catch (error: any) {
@@ -144,9 +259,6 @@ export const DataCatalogComponent = () => {
           >
             添加数据
           </Button>
-          <Button icon={<DatabaseOutlined />} onClick={() => setView('sources')}>
-            新建数据源
-          </Button>
           <RefreshButton loading={loading} onClick={refresh} />
         </Space>
       }
@@ -154,170 +266,153 @@ export const DataCatalogComponent = () => {
       <Space
         style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
       >
-        <Segmented
-          value={view}
-          onChange={(value) => setView(value as 'assets' | 'sources')}
-          options={[
-            { label: '数据资产', value: 'assets' },
-            { label: '数据源管理', value: 'sources' },
-          ]}
+        <Input.Search
+          allowClear
+          placeholder="搜索数据名称或 ID"
+          style={{ width: 300 }}
+          onSearch={setKeyword}
         />
-        {view === 'assets' && (
-          <Input.Search
-            allowClear
-            placeholder="搜索数据名称或 ID"
-            style={{ width: 300 }}
-            onSearch={setKeyword}
-          />
-        )}
       </Space>
-      {view === 'sources' ? (
-        <DataSourceListComponent />
-      ) : (
-        <Table
-          rowKey="id"
-          loading={loading}
-          dataSource={items}
-          scroll={{ x: 1800 }}
-          columns={[
-            { title: '数据名称', dataIndex: 'name', fixed: 'left', width: 180 },
-            {
-              title: '元数据信息',
-              dataIndex: 'metadata_json',
-              width: 220,
-              render: (v: string) => (
-                <Tooltip title={<pre>{v}</pre>}>
-                  <span>{v || '-'}</span>
-                </Tooltip>
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={items}
+        scroll={{ x: 1800 }}
+        columns={[
+          { title: '数据名称', dataIndex: 'name', fixed: 'left', width: 180 },
+          {
+            title: '元数据信息',
+            dataIndex: 'metadata_json',
+            width: 220,
+            render: (v: string) => (
+              <Tooltip title={<pre>{v}</pre>}>
+                <span>{v || '-'}</span>
+              </Tooltip>
+            ),
+          },
+          {
+            title: '数据提供方',
+            dataIndex: 'provider_node_name',
+            width: 150,
+            render: (v: string, row: DataSandboxRecord) => v || row.provider_node_id,
+          },
+          {
+            title: '上传时间',
+            dataIndex: 'created_at',
+            width: 180,
+            render: formatTime,
+          },
+          {
+            title: '有效期',
+            dataIndex: 'valid_until',
+            width: 180,
+            render: (v: string) => (v ? formatTime(v) : '长期有效'),
+          },
+          {
+            title: '数据类型',
+            dataIndex: 'data_stage',
+            width: 150,
+            render: (v: string) => (
+              <Tag color={v === 'RAW' ? 'orange' : 'green'}>
+                {v === 'RAW' ? '源数据' : '抽样脱敏后数据'}
+              </Tag>
+            ),
+          },
+          {
+            title: '抽样方法',
+            dataIndex: 'sampling_method',
+            width: 130,
+            render: (v: string) => v || '-',
+          },
+          {
+            title: '脱敏方法',
+            dataIndex: 'masking_json',
+            width: 200,
+            render: (v: string) => v || '-',
+          },
+          {
+            title: '源表/源数据',
+            dataIndex: 'source_asset_id',
+            width: 160,
+            render: (v: string, row: DataSandboxRecord) => v || row.datatable_id || '-',
+          },
+          {
+            title: '挂载项目',
+            dataIndex: 'mounted_project_count',
+            width: 120,
+            render: (count: number, row: DataSandboxRecord) =>
+              count ? (
+                <Button type="link" onClick={() => setProjectAsset(row)}>
+                  查看（{count}）
+                </Button>
+              ) : (
+                '未挂载'
               ),
-            },
-            {
-              title: '数据提供方',
-              dataIndex: 'provider_node_name',
-              width: 150,
-              render: (v: string, row: DataSandboxRecord) => v || row.provider_node_id,
-            },
-            {
-              title: '上传时间',
-              dataIndex: 'created_at',
-              width: 180,
-              render: formatTime,
-            },
-            {
-              title: '有效期',
-              dataIndex: 'valid_until',
-              width: 180,
-              render: (v: string) => (v ? formatTime(v) : '长期有效'),
-            },
-            {
-              title: '数据类型',
-              dataIndex: 'data_stage',
-              width: 150,
-              render: (v: string) => (
-                <Tag color={v === 'RAW' ? 'orange' : 'green'}>
-                  {v === 'RAW' ? '源数据' : '抽样脱敏后数据'}
-                </Tag>
-              ),
-            },
-            {
-              title: '抽样方法',
-              dataIndex: 'sampling_method',
-              width: 130,
-              render: (v: string) => v || '-',
-            },
-            {
-              title: '脱敏方法',
-              dataIndex: 'masking_json',
-              width: 200,
-              render: (v: string) => v || '-',
-            },
-            {
-              title: '源表/源数据',
-              dataIndex: 'source_asset_id',
-              width: 160,
-              render: (v: string, row: DataSandboxRecord) =>
-                v || row.datatable_id || '-',
-            },
-            {
-              title: '挂载项目',
-              dataIndex: 'mounted_project_count',
-              width: 120,
-              render: (count: number, row: DataSandboxRecord) =>
-                count ? (
-                  <Button type="link" onClick={() => setProjectAsset(row)}>
-                    查看（{count}）
-                  </Button>
-                ) : (
-                  '未挂载'
-                ),
-            },
-            {
-              title: '数据归属',
-              dataIndex: 'owned',
-              width: 130,
-              render: (owned: boolean) => (
-                <Tag color={owned ? 'green' : 'default'}>
-                  {owned ? '本地数据' : '外部共享'}
-                </Tag>
-              ),
-            },
-            {
-              title: '使用控制',
-              width: 210,
-              render: (_: unknown, row: DataSandboxRecord) =>
-                row.control_valid_until
-                  ? `有效至 ${row.control_valid_until}，导出：${
-                      row.allow_export ? '允许' : '禁止'
-                    }`
-                  : '未设置',
-            },
-            {
-              title: '操作',
-              fixed: 'right',
-              width: 170,
-              render: (_: unknown, row: DataSandboxRecord) => (
-                <Space>
-                  <Button
-                    type="link"
-                    onClick={async () =>
-                      setPreview(
-                        responseData(await DataAssetApi.preview(row.id, 10), {}),
-                      )
-                    }
+          },
+          {
+            title: '数据归属',
+            dataIndex: 'owned',
+            width: 130,
+            render: (owned: boolean) => (
+              <Tag color={owned ? 'green' : 'default'}>
+                {owned ? '本地数据' : '外部共享'}
+              </Tag>
+            ),
+          },
+          {
+            title: '使用控制',
+            width: 210,
+            render: (_: unknown, row: DataSandboxRecord) =>
+              row.control_valid_until
+                ? `有效至 ${row.control_valid_until}，导出：${
+                    row.allow_export ? '允许' : '禁止'
+                  }`
+                : '未设置',
+          },
+          {
+            title: '操作',
+            fixed: 'right',
+            width: 170,
+            render: (_: unknown, row: DataSandboxRecord) => (
+              <Space>
+                <Button
+                  type="link"
+                  onClick={async () =>
+                    setPreview(responseData(await DataAssetApi.preview(row.id, 10), {}))
+                  }
+                >
+                  预览
+                </Button>
+                {row.owned && (
+                  <Popconfirm
+                    title="确定删除该数据？若已挂载到项目，将提交项目全节点审批。"
+                    onConfirm={async () => {
+                      try {
+                        const result = responseData(
+                          await DataAssetApi.deleteAsset(row.id),
+                          {},
+                        );
+                        message.success(
+                          result.status === 'PENDING_APPROVAL'
+                            ? `已提交 ${result.projectCount} 个项目的数据删除申请，请到“项目资源审核”查看进度`
+                            : '删除成功',
+                        );
+                        refresh();
+                      } catch (error: any) {
+                        message.error(error.message || '删除失败');
+                      }
+                    }}
                   >
-                    预览前10行
-                  </Button>
-                  {row.owned && (
-                    <Popconfirm
-                      title="确定删除该数据？若已挂载到项目，将提交项目全节点审批。"
-                      onConfirm={async () => {
-                        try {
-                          const result = responseData(
-                            await DataAssetApi.deleteAsset(row.id),
-                            {},
-                          );
-                          message.success(
-                            result.status === 'PENDING_APPROVAL'
-                              ? `已提交 ${result.projectCount} 个项目的数据删除申请，请到“项目资源审核”查看进度`
-                              : '删除成功',
-                          );
-                          refresh();
-                        } catch (error: any) {
-                          message.error(error.message || '删除失败');
-                        }
-                      }}
-                    >
-                      <Button danger type="link">
-                        删除
-                      </Button>
-                    </Popconfirm>
-                  )}
-                </Space>
-              ),
-            },
-          ]}
-        />
-      )}
+                    <Button danger type="link">
+                      删除
+                    </Button>
+                  </Popconfirm>
+                )}
+              </Space>
+            ),
+          },
+        ]}
+      />
       <Modal
         title="添加数据"
         open={addOpen}
@@ -394,9 +489,10 @@ export const DataCatalogComponent = () => {
                   layout="vertical"
                   initialValues={{
                     databaseType: 'MYSQL',
-                    port: 3306,
-                    queryMode: 'table',
+                    mysqlVersion: '6.0+',
                     protocol: 'MYSQL',
+                    jdbcUrl: mysqlJdbcUrlFor('6.0+'),
+                    ...credentialsFor('MYSQL'),
                   }}
                 >
                   <Form.Item name="name" label="数据名称" rules={[{ required: true }]}>
@@ -411,49 +507,59 @@ export const DataCatalogComponent = () => {
                       <Select
                         style={{ width: 160 }}
                         onChange={(value) =>
-                          databaseForm.setFieldValue(
-                            'port',
-                            value === 'POSTGRESQL' || value === 'OPENGAUSS'
-                              ? 5432
-                              : 3306,
-                          )
+                          databaseForm.setFieldsValue({
+                            jdbcUrl: jdbcUrlFor(value),
+                            ...credentialsFor(value),
+                          })
                         }
                         options={[
                           { value: 'MYSQL', label: 'MySQL' },
                           { value: 'POSTGRESQL', label: 'PostgreSQL' },
-                          { value: 'OCEANBASE', label: 'OceanBase' },
+                          { value: 'GREATSQL', label: 'GreatSQL' },
                           { value: 'OPENGAUSS', label: 'openGauss' },
                         ]}
                       />
                     </Form.Item>
-                    {databaseType === 'OCEANBASE' && (
-                      <Form.Item name="protocol" label="兼容协议">
-                        <Select
-                          style={{ width: 160 }}
-                          options={[
-                            { value: 'MYSQL', label: 'MySQL' },
-                            { value: 'ORACLE', label: 'Oracle' },
-                          ]}
-                        />
-                      </Form.Item>
-                    )}
                   </Space>
+                  <Form.Item
+                    name="jdbcUrl"
+                    label="数据源地址"
+                    rules={[{ required: true }]}
+                    extra="请填写完整 JDBC 地址"
+                  >
+                    <Input placeholder="jdbc:mysql://ip:port/dbName?characterEncoding=UTF-8&useUnicode=true&useSSL=false" />
+                  </Form.Item>
+                  <Form.Item label="驱动类">
+                    <Input
+                      readOnly
+                      value={
+                        databaseType === 'MYSQL'
+                          ? mysqlVersion === '5.1'
+                            ? 'com.mysql.jdbc.Driver'
+                            : 'com.mysql.cj.jdbc.Driver'
+                          : databaseType === 'POSTGRESQL'
+                          ? 'org.postgresql.Driver'
+                          : databaseType === 'GREATSQL'
+                          ? 'com.mysql.cj.jdbc.Driver'
+                          : 'org.opengauss.Driver'
+                      }
+                    />
+                  </Form.Item>
+                  {databaseType === 'MYSQL' && (
+                    <Form.Item name="mysqlVersion" label="Connector/J 版本">
+                      <Select
+                        style={{ width: 260 }}
+                        onChange={(value) =>
+                          databaseForm.setFieldValue('jdbcUrl', mysqlJdbcUrlFor(value))
+                        }
+                        options={[
+                          { value: '5.1', label: 'Connector/J 5.1.x' },
+                          { value: '6.0+', label: 'Connector/J 6.0.x 及以上' },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
                   <Space align="start" wrap>
-                    <Form.Item name="host" label="主机" rules={[{ required: true }]}>
-                      <Input style={{ width: 260 }} placeholder="127.0.0.1" />
-                    </Form.Item>
-                    <Form.Item name="port" label="端口" rules={[{ required: true }]}>
-                      <InputNumber min={1} max={65535} style={{ width: 120 }} />
-                    </Form.Item>
-                  </Space>
-                  <Space align="start" wrap>
-                    <Form.Item
-                      name="database"
-                      label="数据库名称"
-                      rules={[{ required: true }]}
-                    >
-                      <Input style={{ width: 220 }} />
-                    </Form.Item>
                     <Form.Item
                       name="username"
                       label="只读账号"
@@ -465,33 +571,16 @@ export const DataCatalogComponent = () => {
                       <Input.Password style={{ width: 180 }} />
                     </Form.Item>
                   </Space>
-                  <Form.Item name="queryMode" label="读取方式">
-                    <Segmented
-                      options={[
-                        { value: 'table', label: '全表读取' },
-                        { value: 'sql', label: 'SQL 过滤' },
-                      ]}
-                    />
-                  </Form.Item>
-                  {queryMode === 'sql' ? (
-                    <Form.Item name="sql" label="只读 SQL" rules={[{ required: true }]}>
-                      <Input.TextArea
-                        rows={5}
-                        placeholder="SELECT * FROM schema.table_name WHERE status = 'ACTIVE'"
-                      />
-                    </Form.Item>
-                  ) : (
-                    <Form.Item
-                      name="tableName"
-                      label="表名"
-                      rules={[{ required: true }]}
-                    >
-                      <Input placeholder="schema.table_name" />
-                    </Form.Item>
-                  )}
                   <Space>
-                    <Button loading={databaseLoading} onClick={previewDatabase}>
-                      测试并预览
+                    <Button loading={databaseLoading} onClick={testDatabase}>
+                      测试连接
+                    </Button>
+                    <Button
+                      loading={databaseLoading}
+                      onClick={previewDatabase}
+                      disabled={!selectedDatabaseTables.length}
+                    >
+                      预览选中表
                     </Button>
                     <Button
                       type="primary"
@@ -502,6 +591,19 @@ export const DataCatalogComponent = () => {
                       导入为数据资产
                     </Button>
                   </Space>
+                  {databaseTables.length > 0 && (
+                    <Table
+                      rowKey="name"
+                      size="small"
+                      pagination={{ pageSize: 8 }}
+                      rowSelection={{
+                        selectedRowKeys: selectedDatabaseTables,
+                        onChange: (keys) => setSelectedDatabaseTables(keys as string[]),
+                      }}
+                      columns={[{ title: '可用表名', dataIndex: 'name' }]}
+                      dataSource={databaseTables.map((name) => ({ name }))}
+                    />
+                  )}
                   {databasePreview && (
                     <div style={{ marginTop: 16 }}>
                       <DataAssetPreviewTable preview={databasePreview} />

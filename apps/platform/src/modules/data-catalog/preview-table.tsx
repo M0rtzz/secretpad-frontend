@@ -1,4 +1,4 @@
-import { Alert, Empty, Table, Tag, Typography } from 'antd';
+import { Alert, Empty, Image, Table, Tag, Typography } from 'antd';
 
 import { DataSandboxRecord } from '@/services/data-sandbox';
 
@@ -9,6 +9,11 @@ export const DataAssetPreviewTable = ({ preview }: { preview?: DataSandboxRecord
   const names: string[] = Array.isArray(previewColumns)
     ? previewColumns
     : Object.keys(rows[0] || {});
+  const modality = String(preview?.asset?.modality || '').toUpperCase();
+  const contentType = String(
+    preview?.asset?.content_type || preview?.asset?.contentType || '',
+  ).toLowerCase();
+  const isImage = modality === 'IMAGE' || contentType.startsWith('image/');
 
   return (
     <>
@@ -33,7 +38,22 @@ export const DataAssetPreviewTable = ({ preview }: { preview?: DataSandboxRecord
           数据集：{preview.asset.name} 预览行数：{rows.length}
         </Typography.Text>
       )}
-      {names.length ? (
+      {isImage ? (
+        <Image
+          style={{
+            display: 'block',
+            maxWidth: '100%',
+            maxHeight: 560,
+            marginTop: 12,
+            objectFit: 'contain',
+          }}
+          src={`/api/v1alpha1/data-assets/content?id=${encodeURIComponent(
+            String(preview?.asset?.id || ''),
+          )}`}
+          alt={String(preview?.asset?.name || '图片数据')}
+          preview
+        />
+      ) : names.length ? (
         <Table
           style={{ marginTop: 12 }}
           size="small"
