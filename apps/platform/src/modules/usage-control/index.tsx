@@ -1,4 +1,5 @@
-import { Form, message, Modal, Switch, Table, Tag } from 'antd';
+import { DatePicker, Form, message, Modal, Switch, Table, Tag } from 'antd';
+import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 
 import { MvpPage, formatTime } from '@/modules/data-sandbox-mvp/common';
@@ -32,7 +33,10 @@ export const UsageControlComponent = () => {
         onRow={(row) => ({
           onClick: () => {
             setEditing(row);
-            form.setFieldsValue({ allowUse: !!row.allow_use });
+            form.setFieldsValue({
+              allowUse: !!row.allow_use,
+              useUntil: row.use_until ? dayjs(row.use_until) : undefined,
+            });
           },
           style: { cursor: 'pointer' },
         })}
@@ -43,12 +47,19 @@ export const UsageControlComponent = () => {
           {
             title: '使用控制',
             dataIndex: 'allow_use',
-            render: (value: number) =>
-              value ? (
+            render: (_: number, row: DataSandboxRecord) =>
+              row.canUse ? (
                 <Tag color="success">允许使用</Tag>
+              ) : row.allow_use ? (
+                <Tag color="warning">已截止</Tag>
               ) : (
                 <Tag color="error">禁止使用</Tag>
               ),
+          },
+          {
+            title: '使用截止时间',
+            dataIndex: 'use_until',
+            render: (value: string) => (value ? formatTime(value) : '未设置'),
           },
           { title: '更新时间', dataIndex: 'updated_at', render: formatTime },
         ]}
@@ -71,6 +82,7 @@ export const UsageControlComponent = () => {
                   sandboxId: editing.sandbox_id,
                   assetId: editing.asset_id,
                   allowUse: values.allowUse,
+                  useUntil: values.useUntil?.toISOString?.() || '',
                   version: editing.version || 0,
                 }),
                 {},
@@ -89,6 +101,13 @@ export const UsageControlComponent = () => {
             valuePropName="checked"
           >
             <Switch checkedChildren="允许" unCheckedChildren="禁止" />
+          </Form.Item>
+          <Form.Item
+            name="useUntil"
+            label="使用截止时间"
+            rules={[{ required: true, message: '请设置使用截止时间' }]}
+          >
+            <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
           </Form.Item>
         </Form>
       </Modal>

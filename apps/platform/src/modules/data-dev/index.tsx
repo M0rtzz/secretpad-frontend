@@ -464,6 +464,15 @@ export const DataDevComponent = () => {
 
   const submitTask = async (values: DataSandboxRecord) => {
     try {
+      if (sandboxId) {
+        const source = sandboxTables.find(
+          (item) => item.tableName === values.sourceTable,
+        );
+        if (source?.canUse === false) {
+          message.error(source.disabledReason || '该挂载数据当前不可使用');
+          return;
+        }
+      }
       const { artifactName, version, ...rest } = values;
       rest.viewUntil = values.viewUntil?.toISOString?.() || '';
       rest.exportUntil = values.allowExport
@@ -1143,7 +1152,11 @@ export const DataDevComponent = () => {
         title="提交计算任务"
         open={taskOpen}
         width={820}
-        onCancel={() => setTaskOpen(false)}
+        onCancel={() => {
+          setTaskOpen(false);
+          taskForm.resetFields();
+          setPreview(undefined);
+        }}
         onOk={() => taskForm.submit()}
       >
         <Form
@@ -1191,9 +1204,16 @@ export const DataDevComponent = () => {
                   )
                   .map((item) => ({
                     value: item.tableName,
+                    disabled: item.canUse === false,
                     label: `${item.tableName}（${item.name || item.tableName}${
                       item.source === 'SYNCED' ? '·跨节点' : ''
-                    }）`,
+                    }）${
+                      item.canUse === false
+                        ? ` · ${item.disabledReason || '不可使用'}`
+                        : item.use_until
+                        ? ` · 可使用至 ${formatTime(item.use_until)}`
+                        : ''
+                    }`,
                   }))}
               />
             </Form.Item>
