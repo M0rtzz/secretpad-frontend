@@ -42,6 +42,7 @@ const typeColors: Record<string, string> = {
 
 const statusLabels: Record<string, string> = {
   DATA_PROVIDER_REVIEW: '待项目节点一致审核',
+  OPERATOR_REVIEW: '待运营方审核',
   APPROVED: '已批准',
   EXECUTING: '执行中',
   COMPLETED: '已完成',
@@ -207,11 +208,27 @@ export const SandboxApprovalComponent = () => {
           {
             title: '状态',
             dataIndex: 'status',
-            render: (v: string, row: DataSandboxRecord) => (
-              <Tooltip title={row.last_error || ''}>
-                <Tag color={statusColors[v]}>{statusLabels[v] || v}</Tag>
-              </Tooltip>
-            ),
+            render: (v: string, row: DataSandboxRecord) => {
+              const error = String(row.last_error || '').trim();
+              const source = String(row.executor || 'system');
+              const errorDetail = error
+                ? `${
+                    source.startsWith('system:') ? source : `system:${source}`
+                  } · ${error}`
+                : '';
+              return (
+                <Space direction="vertical" size={0}>
+                  <Tooltip title={errorDetail}>
+                    <Tag color={statusColors[v]}>{statusLabels[v] || v}</Tag>
+                  </Tooltip>
+                  {v === 'FAILED' && errorDetail && (
+                    <span style={{ color: '#ff4d4f', maxWidth: 260 }}>
+                      {errorDetail}
+                    </span>
+                  )}
+                </Space>
+              );
+            },
           },
           {
             title: '重试',
@@ -322,11 +339,12 @@ export const SandboxApprovalComponent = () => {
           }))}
         />
       </Drawer>
-      <Drawer
+      <Modal
         title="申请详细信息"
-        width={680}
+        width={800}
+        footer={null}
         open={!!detail}
-        onClose={() => setDetail(undefined)}
+        onCancel={() => setDetail(undefined)}
       >
         <Space direction="vertical" style={{ width: '100%' }}>
           <div>申请单：{detail?.id}</div>
@@ -334,6 +352,43 @@ export const SandboxApprovalComponent = () => {
           <div>所属节点 ID：{detail?.applicant_node_id || detail?.owner_id}</div>
           <div>所属项目：{detail?.project_id}</div>
           <div>提交人：{detail?.submitter}</div>
+          {detail?.approval_type === 'ASSET_DELETE' && (
+            <>
+              <div>数据名称：{detail?.asset_detail?.name || '未知'}</div>
+              <div>
+                数据提供方：
+                {detail?.asset_detail?.provider_node_name ||
+                  detail?.asset_detail?.provider_node_id ||
+                  '未知'}
+              </div>
+              <div>
+                上传时间：{formatTime(detail?.asset_detail?.uploaded_at) || '未知'}
+              </div>
+              <div>
+                数据类型：
+                {detail?.asset_detail?.data_stage === 'RAW'
+                  ? '源数据'
+                  : detail?.asset_detail?.data_stage === 'PROCESSED'
+                  ? '抽样脱敏后数据'
+                  : '未知'}
+              </div>
+              <div>
+                是否项目共享数据：{detail?.asset_detail?.project_shared ? '是' : '否'}
+              </div>
+              <div>关联项目：</div>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="project_id"
+                locale={{ emptyText: '暂无关联项目' }}
+                dataSource={detail?.asset_detail?.projects || []}
+                columns={[
+                  { title: '项目名称', dataIndex: 'name' },
+                  { title: '项目 ID', dataIndex: 'project_id' },
+                ]}
+              />
+            </>
+          )}
           <div>项目节点投票：</div>
           <Table
             size="small"
@@ -354,7 +409,7 @@ export const SandboxApprovalComponent = () => {
           <div>申请参数：</div>
           <pre style={{ whiteSpace: 'pre-wrap' }}>{detail?.payload_json}</pre>
         </Space>
-      </Drawer>
+      </Modal>
     </MvpPage>
   );
 };

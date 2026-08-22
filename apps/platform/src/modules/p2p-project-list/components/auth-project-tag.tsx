@@ -15,7 +15,7 @@ import React from 'react';
 import { useLocation } from 'umi';
 
 import { DefaultModalManager } from '@/modules/dag-modal-manager';
-import { p2pProjectDetailDrawer } from '@/modules/p2p-project-detail/project-detail-drawer';
+import { p2pProjectDetailModal } from '@/modules/p2p-project-detail/project-detail-modal';
 import { useModel } from '@/util/valtio-helper';
 import { DataAssetApi, DataSandboxRecord, responseData } from '@/services/data-sandbox';
 
@@ -105,29 +105,35 @@ export const AuthProjectTag = (props: IProps) => {
     if (!voteId || !project.projectId) return;
     setApproveLoading(true);
     try {
-      if (assetIds.length) {
-        responseData(
-          await DataAssetApi.attachProjectAssets({
-            projectId: project.projectId,
-            assetIds,
-          }),
-          [],
-        );
-      }
       const success = await viewInstance.process(StatusEnum.AGREE, voteId, pathname);
-      if (success) {
-        setApproveOpen(false);
-        approveForm.resetFields();
+      if (!success) return;
+
+      if (assetIds.length) {
+        try {
+          responseData(
+            await DataAssetApi.attachProjectAssets({
+              projectId: project.projectId,
+              assetIds,
+            }),
+            [],
+          );
+        } catch (error: any) {
+          message.warning(
+            `项目已同意，数据挂载失败：${error.message || '请稍后在项目中重试'}`,
+          );
+        }
       }
+      setApproveOpen(false);
+      approveForm.resetFields();
     } catch (error: any) {
-      message.error(error.message || '同意项目并挂载数据失败');
+      message.error(error.message || '同意项目失败');
     } finally {
       setApproveLoading(false);
     }
   };
 
   const handleOpenProjectDetail = () => {
-    modalManager.openModal(p2pProjectDetailDrawer.id, project);
+    modalManager.openModal(p2pProjectDetailModal.id, project);
   };
 
   return (

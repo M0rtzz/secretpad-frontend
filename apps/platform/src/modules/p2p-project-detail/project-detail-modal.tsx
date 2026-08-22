@@ -1,14 +1,13 @@
-import { CloseOutlined } from '@ant-design/icons';
-import { ShowMenuContext, Portal } from '@secretflow/dag';
 import {
   Badge,
   Button,
-  Drawer,
   Empty,
   Input,
+  Modal,
   Pagination,
   Popconfirm,
   Space,
+  Table,
   Tabs,
   Tag,
   message,
@@ -21,9 +20,7 @@ import React from 'react';
 import { memo, useEffect, useState } from 'react';
 
 import { ReactComponent as PipelineIcon } from '@/assets/pipeline.icon.svg';
-import { VoteInstNodesGraph } from '@/components/vote-insts-graph';
 import { DefaultModalManager } from '@/modules/dag-modal-manager';
-import dagLayoutStyle from '@/modules/layout/dag-layout/index.less';
 import { getModel, useModel } from '@/util/valtio-helper';
 
 import { formatTimestamp } from '../dag-result/utils';
@@ -32,12 +29,9 @@ import {
   P2pProjectButtons,
   ProjectStatus,
 } from '../p2p-project-list/components/common';
-import { ProjectTypeTag } from '../p2p-project-list/components/project-type-tag';
 import { P2pProjectListService } from '../p2p-project-list/p2p-project-list.service';
-import { ComputeModeType, computeModeText } from '../project-list';
 import { mapStatusToBadge } from '../project-list/components/popover';
 
-import { convertToNodeData } from './helper';
 import styles from './index.less';
 import { P2pProjectDetailService } from './project-detail-service';
 
@@ -125,23 +119,61 @@ const JobsComponent: React.FC<IJobComponent> = (props: IJobComponent) => {
 
 interface IVoteInstsNodesComponent {
   voteInstNodeList: API.ProjectParticipantsDetailVO[];
+  joinedAt?: string;
 }
 
 const VoteInstsNodesComponent: React.FC<IVoteInstsNodesComponent> = memo(
-  ({ voteInstNodeList }: IVoteInstsNodesComponent) => {
-    const { nodeData, edgeData, groupNodeIds } = convertToNodeData(voteInstNodeList);
-
-    const [graphHeight, setGraphHeight] = useState(window.innerHeight - 210);
-
+  ({ voteInstNodeList, joinedAt }: IVoteInstsNodesComponent) => {
+    const rows: Array<Record<string, string>> = [];
+    const addRow = (name: string, nodeId: string, instId: string, role: string) => {
+      const status = voteInstNodeList[0]?.partyVoteStatuses?.find(
+        (item) => item.participantID === instId,
+      );
+      rows.push({
+        key: `${nodeId}-${rows.length}`,
+        name: name || instId || '-',
+        nodeId: nodeId || '-',
+        role,
+        status:
+          status?.action === StatusEnum.PROCESS
+            ? '待确认'
+            : status?.action === StatusEnum.REJECT
+            ? '离线'
+            : '正常',
+        joinedAt: joinedAt ? formatTimestamp(joinedAt) : '-',
+      });
+    };
+    voteInstNodeList.forEach((item) => {
+      addRow(
+        item.initiatorName || '',
+        item.initiatorId || '',
+        item.initiatorId || '',
+        '发起方',
+      );
+      (item.participantNodeInstVOS || []).forEach((group) =>
+        (group.invitees || []).forEach((invitee: any) =>
+          addRow(invitee.inviteeName, invitee.inviteeId, invitee.instId, '协作方'),
+        ),
+      );
+    });
     return (
-      <div style={{ height: graphHeight }}>
-        <VoteInstNodesGraph
-          nodes={nodeData}
-          edges={edgeData}
-          groupNodeIds={groupNodeIds}
-          setGraphHeight={setGraphHeight}
-        />
-      </div>
+      <Table
+        rowKey="key"
+        dataSource={rows}
+        pagination={false}
+        locale={{ emptyText: <Empty description="暂无参与机构" /> }}
+        columns={[
+          { title: '机构/节点名称', dataIndex: 'name' },
+          { title: '节点 ID', dataIndex: 'nodeId' },
+          { title: '角色', dataIndex: 'role' },
+          {
+            title: '状态',
+            dataIndex: 'status',
+            render: (value: string) => <Tag>{value}</Tag>,
+          },
+          { title: '加入时间', dataIndex: 'joinedAt' },
+        ]}
+      />
     );
   },
 );
@@ -167,12 +199,12 @@ const ProjectDetailTabs: React.FC<IProjectDetailTabs> = (props: IProjectDetailTa
   );
 };
 
-export const P2pProjectDetailDrawer = memo(() => {
+export const P2pProjectDetailModal = memo(() => {
   const modalManager = useModel(DefaultModalManager);
   const p2pProjectDetailService = useModel(P2pProjectDetailService);
   const p2pProjectService = useModel(P2pProjectListService);
 
-  const { visible, data } = modalManager.modals[p2pProjectDetailDrawer.id];
+  const { visible, data } = modalManager.modals[p2pProjectDetailModal.id];
   const { ownerId } = parse(window.location.search);
   const [tabKey, setTabKey] = useState('parties');
 
@@ -182,10 +214,11 @@ export const P2pProjectDetailDrawer = memo(() => {
   const items: TabsProps['items'] = [
     {
       key: 'parties',
-      label: `参与机构（${p2pProjectDetailService.voteInstNodeList.partyVoteStatuses?.length}）`,
+      label: `参与机构（${p2pProjectDetailService.voteInstNodeList.length}）`,
       children: (
         <VoteInstsNodesComponent
           voteInstNodeList={p2pProjectDetailService.voteInstNodeList}
+          joinedAt={data.gmtCreate}
         />
       ),
     },
@@ -208,7 +241,7 @@ export const P2pProjectDetailDrawer = memo(() => {
   ];
 
   const onClose = () => {
-    modalManager.closeModal(p2pProjectDetailDrawer.id);
+    modalManager.closeModal(p2pProjectDetailModal.id);
   };
 
   useEffect(() => {
@@ -244,41 +277,14 @@ export const P2pProjectDetailDrawer = memo(() => {
   };
 
   return (
-    <Drawer
-      title={
-        <div className={styles.title}>
-          <Tag className={styles.computeModeTag}>
-            {computeModeText[data.computeMode as keyof typeof computeModeText] ||
-              computeModeText[ComputeModeType.MPC]}
-          </Tag>
-          <ProjectTypeTag type={data.computeFunc || 'DAG'} />
-          <Paragraph
-            style={{ fontSize: 16, marginLeft: 8, width: 400, marginBottom: 0 }}
-            ellipsis={{ rows: 1, tooltip: data.projectName }}
-          >
-            {data.projectName}
-          </Paragraph>
-        </div>
-      }
-      placement="right"
-      width={600}
+    <Modal
+      title={`${tabKey === 'parties' ? '项目参与机构' : '项目详情'}${
+        data.projectName ? ` · ${data.projectName}` : ''
+      }`}
+      width={800}
       destroyOnClose
-      closable={false}
-      onClose={onClose}
       open={visible}
-      getContainer={() => {
-        return document.querySelector(`.${dagLayoutStyle.center}`) as Element;
-      }}
-      mask={false}
-      style={{ padding: 0 }}
-      extra={
-        <CloseOutlined
-          style={{ fontSize: 12 }}
-          onClick={() => {
-            onClose();
-          }}
-        />
-      }
+      onCancel={onClose}
       footer={
         <div style={{ textAlign: 'right' }}>
           <Space size={8}>
@@ -331,7 +337,7 @@ export const P2pProjectDetailDrawer = memo(() => {
                 </Button>
               </>
             ) : (
-              <P2pProjectButtons project={data} inDrawer={true} />
+              <P2pProjectButtons project={data} />
             )}
           </Space>
         </div>
@@ -344,16 +350,16 @@ export const P2pProjectDetailDrawer = memo(() => {
       ) : (
         <ProjectDetailTabs tabKey={tabKey} onChange={handleTabChange} items={items} />
       )}
-    </Drawer>
+    </Modal>
   );
 });
 
-P2pProjectDetailDrawer.displayName = 'P2pProjectDetailDrawer';
+P2pProjectDetailModal.displayName = 'P2pProjectDetailModal';
 
-export const p2pProjectDetailDrawer = {
+export const p2pProjectDetailModal = {
   id: 'project-detail',
   visible: false,
   data: {},
 };
 
-getModel(DefaultModalManager).registerModal(p2pProjectDetailDrawer);
+getModel(DefaultModalManager).registerModal(p2pProjectDetailModal);

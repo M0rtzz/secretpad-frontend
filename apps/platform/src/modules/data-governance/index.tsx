@@ -12,7 +12,6 @@ import {
   Table,
   Tabs,
   Tag,
-  Timeline,
   Tooltip,
 } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
@@ -26,16 +25,9 @@ import {
   GovernanceConfigFields,
   governanceColumnsFromPreview,
   maskingFormRows,
-  samplingFormValues,
   transformMaskingRows,
   transformSamplingForm,
 } from './governance-config-form';
-
-const policyTypeLabels: Record<string, string> = {
-  SAMPLING: '抽样',
-  MASKING: '脱敏',
-  SAMPLING_MASKING: '抽样+脱敏',
-};
 
 const execModeLabels: Record<string, string> = {
   BUILTIN: '内置引擎',
@@ -61,17 +53,6 @@ const statusColors: Record<string, string> = {
 const CANCELLABLE = ['PENDING', 'RUNNING'];
 
 export const DataGovernanceComponent = () => {
-  /* --------------------------------- 策略 --------------------------------- */
-  const [policies, setPolicies] = useState<DataSandboxRecord[]>([]);
-  const [policyLoading, setPolicyLoading] = useState(false);
-  const [policyType, setPolicyType] = useState('');
-  const [policyKeyword, setPolicyKeyword] = useState('');
-  const [policyOpen, setPolicyOpen] = useState(false);
-  const [policyItem, setPolicyItem] = useState<DataSandboxRecord>();
-  const [policyForm] = Form.useForm();
-  const editingPolicyType = Form.useWatch('policyType', policyForm);
-  const [policyPreview, setPolicyPreview] = useState<DataSandboxRecord>();
-
   /* --------------------------------- 任务 --------------------------------- */
   const [tasks, setTasks] = useState<DataSandboxRecord[]>([]);
   const [taskLoading, setTaskLoading] = useState(false);
@@ -96,30 +77,6 @@ export const DataGovernanceComponent = () => {
   const [viewOpen, setViewOpen] = useState(false);
   const [viewLoading, setViewLoading] = useState(false);
 
-  /* --------------------------------- 血缘 --------------------------------- */
-  const [lineage, setLineage] = useState<DataSandboxRecord[]>([]);
-  const [lineageQuery, setLineageQuery] = useState({ nodeId: '', datatableId: '' });
-  const [lineageLoading, setLineageLoading] = useState(false);
-
-  const refreshPolicies = useCallback(async () => {
-    setPolicyLoading(true);
-    try {
-      setPolicies(
-        responseData(
-          await DataGovernanceApi.policies({
-            type: policyType,
-            keyword: policyKeyword,
-          }),
-          [],
-        ),
-      );
-    } catch (error: any) {
-      message.error(error.message || '加载策略失败');
-    } finally {
-      setPolicyLoading(false);
-    }
-  }, [policyType, policyKeyword]);
-
   const refreshTasks = useCallback(async () => {
     setTaskLoading(true);
     try {
@@ -139,10 +96,6 @@ export const DataGovernanceComponent = () => {
       setTaskLoading(false);
     }
   }, [taskStatus, taskExecMode, taskKeyword]);
-
-  useEffect(() => {
-    refreshPolicies();
-  }, [refreshPolicies]);
 
   useEffect(() => {
     refreshTasks();
@@ -166,147 +119,11 @@ export const DataGovernanceComponent = () => {
     }
   }, [resultsOpen]);
 
-  const openPolicyCreate = () => {
-    setPolicyItem(undefined);
-    setPolicyPreview(undefined);
-    policyForm.resetFields();
-    policyForm.setFieldsValue({
-      policyType: 'SAMPLING_MASKING',
-      samplingMethod: 'RANDOM',
-      samplingMode: 'count',
-      samplingCount: 100,
-      maskingRows: [],
-    });
-    setPolicyOpen(true);
-  };
-
-  const openPolicyEdit = async (row: DataSandboxRecord) => {
-    setPolicyItem(row);
-    policyForm.setFieldsValue({
-      name: row.name,
-      description: row.description || '',
-      policyType: row.policy_type,
-      sourceAssetId: row.source_asset_id || undefined,
-      sourceNodeId: row.source_node_id || undefined,
-      sourceDatatableId: row.source_datatable_id || undefined,
-      ...samplingFormValues(row.sampling_method, row.sampling_params),
-      maskingRows: maskingFormRows(row.masking_columns),
-    });
-    setPolicyOpen(true);
-    if (row.source_node_id && row.source_datatable_id) {
-      await loadPolicySourcePreview(row.source_node_id, row.source_datatable_id);
-    } else {
-      setPolicyPreview(undefined);
-    }
-  };
-
-  const loadPolicySourcePreview = async (nodeId: string, datatableId: string) => {
-    try {
-      const sourcePreview = responseData(
-        await DataGovernanceApi.preview(nodeId, datatableId, 5),
-        {},
-      );
-      setPolicyPreview(sourcePreview);
-      const currentRules = transformMaskingRows(
-        policyForm.getFieldValue('maskingRows') || [],
-      );
-      policyForm.setFieldValue(
-        'maskingRows',
-        maskingFormRows(currentRules, governanceColumnsFromPreview(sourcePreview)),
-      );
-    } catch (error: any) {
-      setPolicyPreview(undefined);
-      message.error(error.message || '加载参考数据失败');
-    }
-  };
-
-  const onPolicySourceChange = (assetId?: string) => {
-    const asset = sourceAssets.find((item) => item.id === assetId);
-    policyForm.setFieldsValue({
-      sourceNodeId: asset?.provider_node_id,
-      sourceDatatableId: asset?.datatable_id || asset?.id,
-      maskingRows: [],
-    });
-    setPolicyPreview(undefined);
-    if (asset) {
-      void loadPolicySourcePreview(
-        asset.provider_node_id,
-        asset.datatable_id || asset.id,
-      );
-    }
-  };
-
-  const savePolicy = async (values: DataSandboxRecord) => {
-    try {
-      const payload = { ...values };
-      payload.samplingParams =
-        values.policyType === 'MASKING'
-          ? '{}'
-          : JSON.stringify(transformSamplingForm(values));
-      payload.maskingColumns =
-        values.policyType === 'SAMPLING'
-          ? '[]'
-          : JSON.stringify(transformMaskingRows(values.maskingRows || []));
-      if (values.policyType === 'MASKING') payload.samplingMethod = '';
-      delete payload.samplingMode;
-      delete payload.samplingCount;
-      delete payload.samplingRatio;
-      delete payload.samplingSeed;
-      delete payload.strataColumns;
-      delete payload.clusterMode;
-      delete payload.clusterColumn;
-      delete payload.blockSize;
-      delete payload.maskingRows;
-      if (policyItem?.id) {
-        responseData(
-          await DataGovernanceApi.updatePolicy({ id: policyItem.id, ...payload }),
-          {},
-        );
-        message.success('策略已更新');
-      } else {
-        responseData(await DataGovernanceApi.createPolicy(payload), {});
-        message.success('策略已创建');
-      }
-      setPolicyOpen(false);
-      policyForm.resetFields();
-      refreshPolicies();
-    } catch (error: any) {
-      message.error(error.message || '保存策略失败');
-    }
-  };
-
-  const deletePolicy = async (row: DataSandboxRecord) => {
-    try {
-      responseData(await DataGovernanceApi.deletePolicy(row.id), {});
-      message.success('策略已删除');
-      refreshPolicies();
-    } catch (error: any) {
-      message.error(error.message || '删除失败');
-    }
-  };
-
   const openTaskSubmit = () => {
     taskForm.resetFields();
     setPreview(undefined);
     taskForm.setFieldsValue({ execMode: 'BUILTIN' });
     setTaskOpen(true);
-  };
-
-  /** 选择策略后自动填充抽样/脱敏配置（可再手工覆盖，覆盖后按内联执行）；清空则还原为空配置。 */
-  const onPolicyChange = (policyId?: string) => {
-    const policy = (policies || []).find((p) => p.id === policyId);
-    if (policy) {
-      const columns = governanceColumnsFromPreview(preview);
-      taskForm.setFieldsValue({
-        ...samplingFormValues(policy.sampling_method, policy.sampling_params),
-        maskingRows: maskingFormRows(policy.masking_columns, columns),
-      });
-    } else {
-      taskForm.setFieldsValue({
-        samplingMethod: undefined,
-        maskingRows: maskingFormRows([], governanceColumnsFromPreview(preview)),
-      });
-    }
   };
 
   const loadSourcePreview = async (nodeId: string, datatableId: string, limit = 5) => {
@@ -338,8 +155,7 @@ export const DataGovernanceComponent = () => {
     await loadSourcePreview(nodeId, datatableId, limit || 5);
   };
 
-  /** 组装后端契约：内联抽样 {method,...params}、内联脱敏 [{column,method,params}]、policyId；剔除表单专用字段。
-   *  后端 DataGovernanceService 仅识别 sampling(Map)/masking(List)/policyId，字段名不匹配会被静默丢弃。 */
+  /** 组装后端契约：内联抽样 {method,...params}、内联脱敏 [{column,method,params}]。 */
   const buildGovernanceTaskPayload = (values: DataSandboxRecord) => {
     const payload: DataSandboxRecord = { ...values };
     delete payload.limit; // 预览行数，非任务参数
@@ -446,34 +262,14 @@ export const DataGovernanceComponent = () => {
     }
   };
 
-  const refreshLineage = useCallback(async () => {
-    setLineageLoading(true);
-    try {
-      setLineage(
-        responseData(
-          await DataGovernanceApi.lineage(
-            lineageQuery.nodeId,
-            lineageQuery.datatableId,
-          ),
-          [],
-        ),
-      );
-    } catch (error: any) {
-      message.error(error.message || '查询血缘失败');
-    } finally {
-      setLineageLoading(false);
-    }
-  }, [lineageQuery]);
-
   return (
     <MvpPage
       title="数据抽样与脱敏"
-      description="抽样与脱敏策略、任务执行（内置引擎/自定义代码）、结果数据集、血缘与源数据预览"
+      description="提交抽样与脱敏任务、查看执行结果与源数据预览"
       extra={
         <RefreshButton
-          loading={policyLoading || taskLoading}
+          loading={taskLoading}
           onClick={() => {
-            refreshPolicies();
             refreshTasks();
           }}
         />
@@ -481,99 +277,6 @@ export const DataGovernanceComponent = () => {
     >
       <Tabs
         items={[
-          {
-            key: 'policies',
-            label: '策略管理',
-            children: (
-              <>
-                <Space style={{ marginBottom: 16 }}>
-                  <Select
-                    value={policyType}
-                    onChange={setPolicyType}
-                    style={{ width: 150 }}
-                    options={[
-                      { value: '', label: '全部类型' },
-                      ...Object.entries(policyTypeLabels).map(([value, label]) => ({
-                        value,
-                        label,
-                      })),
-                    ]}
-                  />
-                  <Input.Search
-                    placeholder="策略名称"
-                    allowClear
-                    onSearch={setPolicyKeyword}
-                    style={{ width: 240 }}
-                  />
-                  <Button type="primary" onClick={openPolicyCreate}>
-                    新建策略
-                  </Button>
-                </Space>
-                <Table
-                  rowKey="id"
-                  loading={policyLoading}
-                  dataSource={policies}
-                  scroll={{ x: 1000 }}
-                  columns={[
-                    {
-                      title: '策略',
-                      dataIndex: 'name',
-                      render: (v: string, row: DataSandboxRecord) => (
-                        <Space direction="vertical" size={0}>
-                          <strong>{v}</strong>
-                          <span>
-                            <Tag color="blue">
-                              {policyTypeLabels[row.policy_type] || row.policy_type}
-                            </Tag>
-                          </span>
-                        </Space>
-                      ),
-                    },
-                    {
-                      title: '抽样方法',
-                      dataIndex: 'sampling_method',
-                      render: (v: string) => (v ? v : '-'),
-                    },
-                    {
-                      title: '参考数据',
-                      dataIndex: 'source_asset_id',
-                      render: (v: string) =>
-                        sourceAssets.find((asset) => asset.id === v)?.name || v || '-',
-                    },
-                    {
-                      title: '脱敏列',
-                      dataIndex: 'masking_columns',
-                      render: (v: string) => {
-                        let count = 0;
-                        try {
-                          count = JSON.parse(v || '[]').length;
-                        } catch {
-                          count = 0;
-                        }
-                        return count > 0 ? `${count} 列` : '-';
-                      },
-                    },
-                    { title: '创建人', dataIndex: 'created_by' },
-                    { title: '更新时间', dataIndex: 'updated_at', render: formatTime },
-                    {
-                      title: '操作',
-                      width: 160,
-                      render: (_: unknown, row: DataSandboxRecord) => (
-                        <Space wrap>
-                          <Button type="link" onClick={() => openPolicyEdit(row)}>
-                            编辑
-                          </Button>
-                          <Button type="link" danger onClick={() => deletePolicy(row)}>
-                            删除
-                          </Button>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                />
-              </>
-            ),
-          },
           {
             key: 'tasks',
             label: '任务管理',
@@ -698,132 +401,8 @@ export const DataGovernanceComponent = () => {
               </>
             ),
           },
-          {
-            key: 'lineage',
-            label: '血缘',
-            children: (
-              <>
-                <Space style={{ marginBottom: 16 }}>
-                  <Input
-                    placeholder="节点 ID（留空为全部）"
-                    value={lineageQuery.nodeId}
-                    onChange={(e) =>
-                      setLineageQuery({ ...lineageQuery, nodeId: e.target.value })
-                    }
-                    style={{ width: 200 }}
-                  />
-                  <Input
-                    placeholder="数据表 ID（可选）"
-                    value={lineageQuery.datatableId}
-                    onChange={(e) =>
-                      setLineageQuery({ ...lineageQuery, datatableId: e.target.value })
-                    }
-                    style={{ width: 200 }}
-                  />
-                  <Button type="primary" onClick={refreshLineage}>
-                    查询
-                  </Button>
-                </Space>
-                <Table
-                  rowKey="id"
-                  loading={lineageLoading}
-                  dataSource={lineage}
-                  scroll={{ x: 1000 }}
-                  columns={[
-                    {
-                      title: '血缘链',
-                      render: (_: unknown, row: DataSandboxRecord) => (
-                        <Space wrap>
-                          <Tag>
-                            {row.source_node_id}/{row.source_datatable_id}
-                          </Tag>
-                          <span>→</span>
-                          <Tag color="green">
-                            {row.target_node_id}/{row.target_datatable_id}
-                          </Tag>
-                        </Space>
-                      ),
-                    },
-                    {
-                      title: '操作',
-                      dataIndex: 'op_type',
-                      render: (v: string) => <Tag color="cyan">{v}</Tag>,
-                    },
-                    { title: '任务', dataIndex: 'task_id' },
-                    { title: '创建人', dataIndex: 'created_by' },
-                    { title: '创建时间', dataIndex: 'created_at', render: formatTime },
-                  ]}
-                />
-              </>
-            ),
-          },
         ]}
       />
-
-      {/* 策略 新建/编辑 */}
-      <Modal
-        title={policyItem?.id ? `编辑策略：${policyItem.name}` : '新建策略'}
-        open={policyOpen}
-        width={1100}
-        onCancel={() => setPolicyOpen(false)}
-        onOk={() => policyForm.submit()}
-      >
-        <Form form={policyForm} layout="vertical" onFinish={savePolicy}>
-          <Form.Item name="name" label="策略名称" rules={[{ required: true }]}>
-            <Input placeholder="例如：手机号脱敏策略" />
-          </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item name="policyType" label="策略类型" rules={[{ required: true }]}>
-            <Select
-              options={Object.entries(policyTypeLabels).map(([value, label]) => ({
-                value,
-                label,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item
-            name="sourceAssetId"
-            label="参考源数据"
-            rules={[{ required: true, message: '请选择本节点源数据' }]}
-            tooltip="只读取字段与少量预览数据用于配置策略，保存策略时不会执行抽样或脱敏任务"
-          >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              placeholder="选择本节点源数据作为策略配置参考"
-              onChange={onPolicySourceChange}
-              options={sourceAssets.map((asset) => ({
-                value: asset.id,
-                label: asset.name,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="sourceNodeId" hidden rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="sourceDatatableId" hidden rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          {policyPreview && (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message={`已加载 ${policyPreview.name || policyPreview.datatableId} 的 ${
-                (policyPreview.header || policyPreview.columns || []).length
-              } 个字段，仅用于配置参考`}
-            />
-          )}
-          <GovernanceConfigFields
-            form={policyForm}
-            columns={governanceColumnsFromPreview(policyPreview)}
-            enableSampling={editingPolicyType !== 'MASKING'}
-            enableMasking={editingPolicyType !== 'SAMPLING'}
-          />
-        </Form>
-      </Modal>
 
       {/* 任务 提交 */}
       <Modal
@@ -847,25 +426,12 @@ export const DataGovernanceComponent = () => {
               }))}
             />
           </Form.Item>
-          <Form.Item
-            name="policyId"
-            label="复用策略（可选）"
-            tooltip="选择已有策略后自动填充下方抽样/脱敏配置，可直接按策略执行所选数据的抽取与脱敏；也可在其基础上手工调整（内联覆盖策略）"
-          >
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder="选择已有策略（gp-xxx），自动填充抽样/脱敏配置"
-              onChange={onPolicyChange}
-              options={(policies || []).map((p) => ({
-                value: p.id,
-                label: `${p.name}（${
-                  policyTypeLabels[p.policy_type] || p.policy_type
-                }）`,
-              }))}
-            />
-          </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            message="请直接配置本次任务的抽样方式和字段脱敏规则"
+            style={{ marginBottom: 16 }}
+          />
           <Form.Item
             name="sourceAssetId"
             label="源数据"
@@ -1003,24 +569,6 @@ export const DataGovernanceComponent = () => {
             {detailItem.finished_at && (
               <div>完成：{formatTime(detailItem.finished_at)}</div>
             )}
-            <strong>血缘</strong>
-            <Timeline
-              items={(detailItem.lineage || []).map((item: DataSandboxRecord) => ({
-                color: 'blue',
-                children: (
-                  <>
-                    <strong>{item.op_type}</strong>
-                    <div>
-                      {item.source_node_id}/{item.source_datatable_id} →{' '}
-                      {item.target_node_id}/{item.target_datatable_id}
-                    </div>
-                    <div>
-                      {item.created_by} · {formatTime(item.created_at)}
-                    </div>
-                  </>
-                ),
-              }))}
-            />
             {detailItem.exec_mode === 'CUSTOM' && detailItem.script_content && (
               <>
                 <strong>脚本</strong>
