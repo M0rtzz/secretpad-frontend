@@ -14,11 +14,15 @@ import {
 import type { GraphEventHandlerProtocol } from '@secretflow/dag';
 import {
   Button,
+  Alert,
   Collapse,
   Divider,
   Empty,
+  Form,
   Input,
   List,
+  Modal,
+  Select,
   Space,
   Tabs,
   Tag,
@@ -26,10 +30,14 @@ import {
   message,
 } from 'antd';
 import { parse } from 'query-string';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { history } from 'umi';
 
-import type { DataSandboxRecord } from '@/services/data-sandbox';
+import {
+  DataComputeApi,
+  responseData,
+  type DataSandboxRecord,
+} from '@/services/data-sandbox';
 import { getModel, useModel } from '@/util/valtio-helper';
 
 import { formatTime } from '../data-sandbox-mvp/common';
@@ -72,6 +80,10 @@ export const SandboxCanvasWorkspace = () => {
     computeCanvasId?: string;
   };
   const canvasId = computeCanvasId || '';
+  const [modelOpen, setModelOpen] = useState(false);
+  const [modelSaving, setModelSaving] = useState(false);
+  const [modelCandidates, setModelCandidates] = useState<DataSandboxRecord[]>([]);
+  const [modelForm] = Form.useForm();
 
   const goBack = () => {
     const current = new URLSearchParams(window.location.search);
@@ -137,6 +149,8 @@ export const SandboxCanvasWorkspace = () => {
     const node = graph.createNode({
       id: nodeId,
       shape: 'dag-node',
+      width: 220,
+      height: 52,
       x: 60 + (maxIdx % 4) * 250,
       y: 80 + Math.floor((maxIdx % 12) / 4) * 130,
       ports,
@@ -148,6 +162,7 @@ export const SandboxCanvasWorkspace = () => {
         statusProcess: 0,
         outputs,
         params,
+        styles: { variant: 'sandbox' },
       },
     });
     graph.addNode(node);
@@ -157,9 +172,60 @@ export const SandboxCanvasWorkspace = () => {
   const startDrag = (codeName: string, label: string, e: React.MouseEvent) => {
     sandboxDag.graphManager.executeAction(
       ActionType.dragNode as never,
-      { codeName, label, status: NodeStatus.default, statusProcess: 0 },
+      {
+        codeName,
+        label,
+        status: NodeStatus.default,
+        statusProcess: 0,
+        styles: { variant: 'sandbox' },
+      },
       e.nativeEvent,
     );
+  };
+
+  const openSaveModel = async () => {
+    try {
+      await sandboxDag.requestService.explicitSave();
+      const candidates = responseData(
+        await DataComputeApi.canvasModelCandidates(view.canvasId),
+        [],
+      );
+      setModelCandidates(candidates);
+      modelForm.setFieldsValue({
+        name: `${String(view.canvas.name || '未命名画布')}-模型`,
+        description: String(view.canvas.description || ''),
+        modelId: candidates.length === 1 ? candidates[0].model_id : undefined,
+      });
+      setModelOpen(true);
+    } catch (error: any) {
+      message.error(error.message || '加载模型信息失败');
+    }
+  };
+
+  const saveModel = async () => {
+    const values = await modelForm.validateFields();
+    setModelSaving(true);
+    try {
+      const saved = responseData(
+        await DataComputeApi.saveCanvasModel({
+          canvasId: view.canvasId,
+          name: values.name,
+          description: values.description || '',
+          modelId: values.modelId || '',
+        }),
+        {},
+      );
+      message.success(
+        saved.status === 'READY'
+          ? '工作流模型已保存，可在自定义算法中发布 API'
+          : '工作流快照已保存；成功运行训练组件后请再次保存为可发布模型',
+      );
+      setModelOpen(false);
+    } catch (error: any) {
+      message.error(error.message || '保存模型失败');
+    } finally {
+      setModelSaving(false);
+    }
   };
 
   const groupedComponents = () => {
@@ -312,6 +378,11 @@ export const SandboxCanvasWorkspace = () => {
               保存
             </Button>
           </Tooltip>
+          <Tooltip title="保存当前工作流拓扑及可执行训练结果">
+            <Button size="small" onClick={openSaveModel}>
+              保存为模型
+            </Button>
+          </Tooltip>
           <Tooltip title="整图运行">
             <Button
               size="small"
@@ -393,6 +464,47 @@ export const SandboxCanvasWorkspace = () => {
         </div>
       </div>
       <RecordsDrawer />
+      <Modal
+        title="保存工作流为模型"
+        open={modelOpen}
+        confirmLoading={modelSaving}
+        onOk={saveModel}
+        onCancel={() => setModelOpen(false)}
+        destroyOnClose
+        width={560}
+      >
+        {!modelCandidates.length && (
+          <Alert
+            showIcon
+            type="warning"
+            style={{ marginBottom: 16 }}
+            message="当前没有可发布的训练结果"
+            description="可以先保存工作流拓扑；整图运行并成功生成训练模型后，再次保存即可用于 API 发布。"
+          />
+        )}
+        <Form form={modelForm} layout="vertical">
+          <Form.Item
+            name="name"
+            label="模型名称"
+            rules={[{ required: true, message: '请输入模型名称' }]}
+          >
+            <Input maxLength={128} />
+          </Form.Item>
+          <Form.Item name="modelId" label="可执行训练结果（发布 API 时必选）">
+            <Select
+              allowClear
+              placeholder="选择该画布成功运行的训练组件输出"
+              options={modelCandidates.map((item) => ({
+                value: item.model_id,
+                label: `${item.name} · ${item.component_code} · ${item.node_id}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="description" label="模型说明">
+            <Input.TextArea rows={3} maxLength={512} showCount />
+          </Form.Item>
+        </Form>
+      </Modal>
       <NodeConfigDrawer />
       <NodeDrawer />
       <TemplateDrawer />

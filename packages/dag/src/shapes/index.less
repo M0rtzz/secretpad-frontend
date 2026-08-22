@@ -96,6 +96,41 @@
     opacity: 0.25;
   }
 
+  &.sandbox {
+    border: 1px solid #8c9aab;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 2px 6px rgb(31 45 61 / 12%);
+    opacity: 1;
+
+    .icon {
+      margin-left: 12px;
+      font-size: 16px;
+    }
+
+    .label {
+      width: 160px;
+      margin-left: 10px;
+      color: #1f2937;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    &.success {
+      border-color: #23b65f;
+    }
+
+    &.failed,
+    &.stopped {
+      border-color: #fc7574;
+    }
+
+    &.pending,
+    &.running {
+      border-color: #0068fa;
+    }
+  }
+
   &.hightlight {
     border-color: rgb(35 182 95 / 100%);
     border-radius: 2px;

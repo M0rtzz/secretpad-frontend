@@ -4,6 +4,8 @@ import {
   Card,
   Col,
   Descriptions,
+  Divider,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -620,9 +622,234 @@ export const VisualModelingComponent = () => (
     {(context) => <CanvasList context={context} />}
   </ComputeContext>
 );
+
+type WorkflowGraph = {
+  nodes: {
+    id: string;
+    data?: { componentCode?: string; name?: string; params?: DataSandboxRecord };
+    position?: { x?: number; y?: number };
+  }[];
+  edges: { source: string; target: string }[];
+};
+
+const workflowGraph = (value: unknown): WorkflowGraph => {
+  try {
+    const parsed = (
+      typeof value === 'string' ? JSON.parse(value || '{}') : value || {}
+    ) as DataSandboxRecord;
+    return {
+      nodes: Array.isArray(parsed?.nodes) ? parsed.nodes : [],
+      edges: Array.isArray(parsed?.edges) ? parsed.edges : [],
+    };
+  } catch {
+    return { nodes: [], edges: [] };
+  }
+};
+
+const WorkflowTopology = ({ graph }: { graph: WorkflowGraph }) => {
+  if (!graph.nodes.length) return <Empty description="工作流拓扑为空" />;
+  const nodeWidth = 190;
+  const nodeHeight = 52;
+  const padding = 36;
+  const raw = graph.nodes.map((node, index) => ({
+    ...node,
+    x: Number(node.position?.x) || (index % 3) * 250,
+    y: Number(node.position?.y) || Math.floor(index / 3) * 120,
+  }));
+  const minX = Math.min(...raw.map((node) => node.x));
+  const minY = Math.min(...raw.map((node) => node.y));
+  const nodes = raw.map((node) => ({
+    ...node,
+    x: node.x - minX + padding,
+    y: node.y - minY + padding,
+  }));
+  const positions = new Map(nodes.map((node) => [node.id, node]));
+  const width = Math.max(...nodes.map((node) => node.x + nodeWidth)) + padding;
+  const height = Math.max(...nodes.map((node) => node.y + nodeHeight)) + padding;
+  return (
+    <div style={{ overflow: 'auto' }}>
+      <svg
+        role="img"
+        aria-label="工作流组件连接拓扑"
+        viewBox={`0 0 ${width} ${height}`}
+        style={{
+          width: '100%',
+          minWidth: Math.min(width, 720),
+          height: Math.min(Math.max(height, 220), 460),
+          border: '1px solid #d9e0e8',
+          borderRadius: 8,
+          background: '#f7f9fc',
+        }}
+      >
+        <defs>
+          <marker
+            id="workflow-arrow"
+            markerWidth="8"
+            markerHeight="8"
+            refX="7"
+            refY="4"
+            orient="auto"
+          >
+            <path d="M0,0 L8,4 L0,8 Z" fill="#62758a" />
+          </marker>
+        </defs>
+        {graph.edges.map((edge, index) => {
+          const source = positions.get(edge.source);
+          const target = positions.get(edge.target);
+          if (!source || !target) return null;
+          return (
+            <line
+              key={`${edge.source}-${edge.target}-${index}`}
+              x1={source.x + nodeWidth / 2}
+              y1={source.y + nodeHeight}
+              x2={target.x + nodeWidth / 2}
+              y2={target.y}
+              stroke="#62758a"
+              strokeWidth="2"
+              markerEnd="url(#workflow-arrow)"
+            />
+          );
+        })}
+        {nodes.map((node) => {
+          const name = String(node.data?.name || node.data?.componentCode || node.id);
+          const code = String(node.data?.componentCode || '');
+          return (
+            <g key={node.id}>
+              <title>{`${name}${code ? ` (${code})` : ''}`}</title>
+              <rect
+                x={node.x}
+                y={node.y}
+                width={nodeWidth}
+                height={nodeHeight}
+                rx="8"
+                fill="#fff"
+                stroke="#55708e"
+                strokeWidth="1.5"
+              />
+              <text
+                x={node.x + nodeWidth / 2}
+                y={node.y + 23}
+                textAnchor="middle"
+                fill="#1f2937"
+                fontSize="14"
+                fontWeight="600"
+              >
+                {name.length > 16 ? `${name.slice(0, 16)}…` : name}
+              </text>
+              <text
+                x={node.x + nodeWidth / 2}
+                y={node.y + 41}
+                textAnchor="middle"
+                fill="#667085"
+                fontSize="10"
+              >
+                {code.length > 24 ? `${code.slice(0, 24)}…` : code}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
+const WorkflowModelDrawer = ({
+  model,
+  onClose,
+}: {
+  model?: DataSandboxRecord;
+  onClose: () => void;
+}) => {
+  const graph = workflowGraph(model?.graph_json);
+  const names = new Map(
+    graph.nodes.map((node) => [
+      node.id,
+      String(node.data?.name || node.data?.componentCode || node.id),
+    ]),
+  );
+  return (
+    <Drawer title="工作流模型详情" open={!!model} onClose={onClose} width={880}>
+      {model && (
+        <>
+          <Descriptions
+            bordered
+            size="small"
+            column={2}
+            items={[
+              { key: 'name', label: '模型名称', children: model.name },
+              {
+                key: 'version',
+                label: '画布版本',
+                children: `v${model.canvas_version}`,
+              },
+              {
+                key: 'status',
+                label: '状态',
+                children: (
+                  <Tag color={model.status === 'READY' ? 'success' : 'default'}>
+                    {model.status === 'READY' ? '可发布 API' : '拓扑草稿'}
+                  </Tag>
+                ),
+              },
+              { key: 'model', label: '执行模型 ID', children: model.model_id || '-' },
+              { key: 'creator', label: '保存人', children: model.created_by },
+              {
+                key: 'time',
+                label: '保存时间',
+                children: formatTime(model.created_at),
+              },
+              {
+                key: 'description',
+                label: '说明',
+                children: model.description || '-',
+                span: 2,
+              },
+            ]}
+          />
+          <Divider orientation="left">组件清单</Divider>
+          <Table
+            rowKey="id"
+            size="small"
+            pagination={false}
+            dataSource={graph.nodes}
+            columns={[
+              {
+                title: '组件名称',
+                render: (_, row) => row.data?.name || row.data?.componentCode || row.id,
+              },
+              { title: '组件编码', render: (_, row) => row.data?.componentCode || '-' },
+              { title: '节点 ID', dataIndex: 'id' },
+            ]}
+          />
+          <Divider orientation="left">连接拓扑</Divider>
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <WorkflowTopology graph={graph} />
+            <Typography.Text type="secondary">
+              {graph.edges.length
+                ? graph.edges
+                    .map(
+                      (edge) =>
+                        `${names.get(edge.source) || edge.source} → ${
+                          names.get(edge.target) || edge.target
+                        }`,
+                    )
+                    .join('；')
+                : '该工作流没有组件连线'}
+            </Typography.Text>
+          </Space>
+        </>
+      )}
+    </Drawer>
+  );
+};
+
 const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
   const [rows, setRows] = useState<DataSandboxRecord[]>([]);
   const [edit, setEdit] = useState<DataSandboxRecord>();
+  const [modelCanvas, setModelCanvas] = useState<DataSandboxRecord>();
+  const [canvasModels, setCanvasModels] = useState<DataSandboxRecord[]>([]);
+  const [modelDetail, setModelDetail] = useState<DataSandboxRecord>();
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [form] = Form.useForm();
   const refresh = useCallback(
     async () =>
@@ -630,6 +857,18 @@ const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
     [context.sandbox.id],
   );
   useEffect(() => void refresh(), [refresh]);
+  const openModels = async (canvas: DataSandboxRecord) => {
+    setModelCanvas(canvas);
+    setCanvasModels([]);
+    setModelsLoading(true);
+    try {
+      setCanvasModels(responseData(await DataComputeApi.canvasModels(canvas.id), []));
+    } catch (e: any) {
+      message.error(e.message || '加载工作流模型失败');
+    } finally {
+      setModelsLoading(false);
+    }
+  };
   const enterDag = (canvas?: DataSandboxRecord) =>
     history.push(
       {
@@ -647,19 +886,14 @@ const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
       title="沙箱智能建模：可视化建模"
       description="复用项目建模画布，输入数据限定为当前沙箱已挂载数据"
       extra={
-        <Space>
-          <Button
-            onClick={() => {
-              setEdit({});
-              form.resetFields();
-            }}
-          >
-            新建画布
-          </Button>
-          <Button type="primary" onClick={() => enterDag()}>
-            进入拖拽建模
-          </Button>
-        </Space>
+        <Button
+          onClick={() => {
+            setEdit({});
+            form.resetFields();
+          }}
+        >
+          新建画布
+        </Button>
       }
     >
       <Table
@@ -669,6 +903,14 @@ const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
           { title: '画布', dataIndex: 'name' },
           { title: '版本', dataIndex: 'version' },
           { title: '状态', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
+          {
+            title: '模型列表',
+            render: (_, row) => (
+              <Button type="link" onClick={() => openModels(row)}>
+                查看模型列表
+              </Button>
+            ),
+          },
           { title: '更新时间', dataIndex: 'updated_at', render: formatTime },
           {
             title: '操作',
@@ -733,6 +975,54 @@ const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
           </Form.Item>
         </Form>
       </Modal>
+      <Drawer
+        title={`${String(modelCanvas?.name || '')} · 模型列表`}
+        open={!!modelCanvas}
+        onClose={() => setModelCanvas(undefined)}
+        width={760}
+      >
+        <Alert
+          showIcon
+          type="info"
+          style={{ marginBottom: 16 }}
+          message="这里展示从该画布显式保存的工作流模型"
+          description="READY 模型已关联成功训练的可执行结果，可在自定义算法中发布 API；DRAFT 仅保存工作流拓扑。"
+        />
+        <Table
+          rowKey="id"
+          size="small"
+          loading={modelsLoading}
+          dataSource={canvasModels}
+          locale={{ emptyText: '该画布尚未保存工作流模型' }}
+          columns={[
+            {
+              title: '模型',
+              dataIndex: 'name',
+              render: (value, row) => (
+                <Button type="link" onClick={() => setModelDetail(row)}>
+                  {value}
+                </Button>
+              ),
+            },
+            { title: '画布版本', dataIndex: 'canvas_version', render: (v) => `v${v}` },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              render: (v) => (
+                <Tag color={v === 'READY' ? 'success' : 'default'}>
+                  {v === 'READY' ? '可发布' : '拓扑草稿'}
+                </Tag>
+              ),
+            },
+            { title: '保存人', dataIndex: 'created_by' },
+            { title: '保存时间', dataIndex: 'created_at', render: formatTime },
+          ]}
+        />
+      </Drawer>
+      <WorkflowModelDrawer
+        model={modelDetail}
+        onClose={() => setModelDetail(undefined)}
+      />
     </MvpPage>
   );
 };

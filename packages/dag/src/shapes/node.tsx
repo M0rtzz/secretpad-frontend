@@ -164,7 +164,9 @@ const DagNode = (props: { node: Node; graph: Graph }) => {
         destroyTooltipOnHide
       >
         <div
-          className={classnames(['dag-node', statusName])}
+          className={classnames(['dag-node', statusName], {
+            sandbox: styles?.variant === 'sandbox',
+          })}
           style={{
             background:
               status === NodeStatus.running || status === NodeStatus.stopped
@@ -203,6 +205,7 @@ const DagNode = (props: { node: Node; graph: Graph }) => {
           ['dag-node', statusName],
           { opaque: isOpaque },
           { hightlight: isHighlighted },
+          { sandbox: styles?.variant === 'sandbox' },
         )}
         style={{
           background:

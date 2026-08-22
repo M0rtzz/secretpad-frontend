@@ -32,6 +32,8 @@ export class RenderAction extends DAGContext implements ActionProtocol {
       x: node.x,
       y: node.y,
       shape: 'dag-node',
+      width: node.styles?.variant === 'sandbox' ? 220 : 180,
+      height: node.styles?.variant === 'sandbox' ? 52 : 36,
       data: {
         id: node.id,
         codeName: node.codeName,

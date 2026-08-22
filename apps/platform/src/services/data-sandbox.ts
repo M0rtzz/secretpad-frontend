@@ -292,6 +292,12 @@ export const DataComputeApi = {
     computePost<DataSandboxRecord>('/canvas/templates/import', data),
   canvasVersions: (canvasId: string) =>
     computeGet<DataSandboxRecord[]>('/canvas/versions', { canvasId }),
+  canvasModels: (canvasId: string) =>
+    computeGet<DataSandboxRecord[]>('/canvas/models', { canvasId }),
+  canvasModelCandidates: (canvasId: string) =>
+    computeGet<DataSandboxRecord[]>('/canvas/models/candidates', { canvasId }),
+  saveCanvasModel: (data: DataSandboxRecord) =>
+    computePost<DataSandboxRecord>('/canvas/models/save', data),
   canvasRollbackVersion: (data: DataSandboxRecord) =>
     computePost<DataSandboxRecord>('/canvas/versions/rollback', data),
   canvasCompareVersions: (versionIdA: string, versionIdB: string) =>

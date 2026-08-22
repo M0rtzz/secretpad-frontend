@@ -89,6 +89,7 @@ export class SandboxGraphRequestService extends DefaultRequestService {
       this.view.loadVersions();
     } else {
       message.error(status?.msg || '保存失败');
+      throw new Error(status?.msg || '保存失败');
     }
   }
 
@@ -224,6 +225,7 @@ export const graphJsonToModel = (graphJson: unknown): GraphModel => {
       status: NodeStatus.default,
       statusProcess: 0,
       params: (data.params as Record<string, unknown>) || {},
+      styles: { variant: 'sandbox' },
     } as unknown as GraphModel['nodes'][number];
   });
   const edges = ((graph.edges as unknown[]) || []).map((raw) => {

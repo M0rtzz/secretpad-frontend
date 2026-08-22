@@ -29,6 +29,7 @@ export type GraphNode = {
   nodeDef?: any;
   outputs?: GraphNodeOutput[];
   styles?: {
+    variant?: 'sandbox';
     isOpaque?: boolean;
     isHighlighted?: boolean;
     isContinueRun?: boolean;
