@@ -90,6 +90,7 @@ export const P2pProjectListComponent: React.FC = () => {
   const [projectAssets, setProjectAssets] = useState<DataSandboxRecord[]>([]);
   const [preview, setPreview] = useState<DataSandboxRecord>();
   const [assetProjectId, setAssetProjectId] = useState('');
+  const [assetProjectArchived, setAssetProjectArchived] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachAssets, setAttachAssets] = useState<DataSandboxRecord[]>([]);
   const [attachForm] = Form.useForm();
@@ -97,8 +98,9 @@ export const P2pProjectListComponent: React.FC = () => {
   const [sandboxProjectName, setSandboxProjectName] = useState('');
   const [projectSandboxes, setProjectSandboxes] = useState<DataSandboxRecord[]>([]);
 
-  const openProjectAssets = async (projectId: string) => {
+  const openProjectAssets = async (projectId: string, archived = false) => {
     setAssetProjectId(projectId);
+    setAssetProjectArchived(archived);
     setAssetOpen(true);
     setAssetLoading(true);
     try {
@@ -374,7 +376,12 @@ export const P2pProjectListComponent: React.FC = () => {
                       <Button
                         type="link"
                         icon={<DatabaseOutlined />}
-                        onClick={() => openProjectAssets(item.projectId as string)}
+                        onClick={() =>
+                          openProjectAssets(
+                            item.projectId as string,
+                            item.status === ProjectStatus.ARCHIVED,
+                          )
+                        }
                       >
                         数据目录
                       </Button>
@@ -419,19 +426,21 @@ export const P2pProjectListComponent: React.FC = () => {
         open={assetOpen}
         width={1050}
         footer={
-          <Button
-            type="primary"
-            onClick={async () => {
-              setAttachAssets(
-                responseData(await DataAssetApi.catalog({}), []).filter(
-                  (asset: DataSandboxRecord) => asset.owned !== false,
-                ),
-              );
-              setAttachOpen(true);
-            }}
-          >
-            挂载本节点数据
-          </Button>
+          !assetProjectArchived ? (
+            <Button
+              type="primary"
+              onClick={async () => {
+                setAttachAssets(
+                  responseData(await DataAssetApi.catalog({}), []).filter(
+                    (asset: DataSandboxRecord) => asset.owned !== false,
+                  ),
+                );
+                setAttachOpen(true);
+              }}
+            >
+              挂载本节点数据
+            </Button>
+          ) : null
         }
         onCancel={() => setAssetOpen(false)}
       >
@@ -572,7 +581,7 @@ export const P2pProjectListComponent: React.FC = () => {
         footer={null}
         onCancel={() => setPreview(undefined)}
       >
-        <DataAssetPreviewTable preview={preview} />
+        <DataAssetPreviewTable preview={preview} emptyText="数据不可见" />
       </Modal>
       <Modal
         title="挂载本节点数据到项目"

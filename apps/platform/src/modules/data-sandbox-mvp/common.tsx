@@ -1,6 +1,8 @@
 import { Alert, Button, Space, Typography } from 'antd';
 import type { ReactNode } from 'react';
 
+import { formatBeijingTimestamp } from '@/modules/dag-result/utils';
+
 import styles from './index.less';
 
 export const MvpPage = ({
@@ -64,7 +66,8 @@ export const RefreshButton = ({
   </Button>
 );
 
-export const formatTime = (value: unknown) => String(value || '-').replace('T', ' ');
+export const formatTime = (value: unknown) =>
+  value ? formatBeijingTimestamp(String(value)) : '-';
 
 export const formatError = (error: unknown, fallback = '请求失败') => {
   if (error instanceof Error && error.message) return error.message;

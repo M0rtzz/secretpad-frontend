@@ -2,16 +2,7 @@ import dayjs from 'dayjs';
 
 import { DataSourceType } from '@/modules/data-source-list/type';
 
-export const formatTimestamp = (timestamp: string) => {
-  if (!timestamp) return '';
-  const min = new Date(timestamp).getTime() / 1000 / 60;
-  const localNow = new Date().getTimezoneOffset();
-
-  const localTime = min - localNow;
-  return dayjs(new Date(localTime * 1000 * 60)).format('YYYY-MM-DD HH:mm:ss');
-};
-
-/** Format an instant in China Standard Time while preserving legacy zone-less values. */
+/** 将带时区的时间转换为北京时间，并保留历史无时区时间的原有语义。 */
 export const formatBeijingTimestamp = (timestamp: string) => {
   if (!timestamp) return '';
   const value = timestamp.trim();
@@ -36,6 +27,9 @@ export const formatBeijingTimestamp = (timestamp: string) => {
     'minute',
   )}:${part('second')}`;
 };
+
+/** 统一按北京时间格式化平台时间。 */
+export const formatTimestamp = (timestamp: string) => formatBeijingTimestamp(timestamp);
 
 export const getDownloadBtnTitle = (type: DataSourceType, path?: string) => {
   switch (type) {

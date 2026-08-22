@@ -2,7 +2,13 @@ import { Alert, Empty, Image, Table, Tag, Typography } from 'antd';
 
 import { DataSandboxRecord } from '@/services/data-sandbox';
 
-export const DataAssetPreviewTable = ({ preview }: { preview?: DataSandboxRecord }) => {
+export const DataAssetPreviewTable = ({
+  preview,
+  emptyText,
+}: {
+  preview?: DataSandboxRecord;
+  emptyText?: string;
+}) => {
   const previewRows = preview?.rows;
   const previewColumns = preview?.columns;
   const rows: DataSandboxRecord[] = Array.isArray(previewRows) ? previewRows : [];
@@ -60,6 +66,7 @@ export const DataAssetPreviewTable = ({ preview }: { preview?: DataSandboxRecord
           bordered
           pagination={false}
           rowKey={(_, index) => String(index)}
+          locale={{ emptyText: emptyText || '暂无数据' }}
           dataSource={rows}
           scroll={{ x: 'max-content', y: 480 }}
           columns={names.map((name) => ({
@@ -76,7 +83,7 @@ export const DataAssetPreviewTable = ({ preview }: { preview?: DataSandboxRecord
           }))}
         />
       ) : (
-        <Empty description="该数据暂无可表格化预览内容" />
+        <Empty description={emptyText || '该数据暂无可表格化预览内容'} />
       )}
     </>
   );

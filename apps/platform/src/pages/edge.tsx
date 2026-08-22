@@ -42,13 +42,6 @@ const SandboxManagerComponent = lazy(() =>
     }),
   ),
 );
-const ResourceManagerComponent = lazy(() =>
-  import('@/modules/resource-manager').then(
-    ({ ResourceManagerComponent: Component }) => ({
-      default: Component,
-    }),
-  ),
-);
 const ModelApprovalComponent = lazy(() =>
   import('@/modules/model-approval').then(({ ModelApprovalComponent: Component }) => ({
     default: Component,
@@ -141,7 +134,7 @@ const menuItems: {
     key: 'resource-management',
     children: [
       {
-        label: '沙箱资源申请',
+        label: '沙箱列表',
         key: 'sandbox-resource-application',
         icon: <ExperimentOutlined />,
         component: <SandboxManagerComponent />,
@@ -151,12 +144,6 @@ const menuItems: {
         key: 'sandbox-resource-review',
         icon: <AuditOutlined />,
         component: <SandboxApprovalComponent />,
-      },
-      {
-        label: '资源监控',
-        key: 'resource-monitor',
-        icon: <DashboardOutlined />,
-        component: <ResourceManagerComponent />,
       },
     ],
   },

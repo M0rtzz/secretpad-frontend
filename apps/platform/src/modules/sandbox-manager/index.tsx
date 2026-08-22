@@ -10,7 +10,6 @@ import {
   Space,
   Table,
   Tag,
-  Tooltip,
   Typography,
 } from 'antd';
 import { parse } from 'query-string';
@@ -28,16 +27,6 @@ import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/c
 import { LoginService } from '@/modules/login/login.service';
 import { useModel } from '@/util/valtio-helper';
 import { checkAllApproved } from '@/modules/p2p-project-list/components/common';
-
-const statusColors: Record<string, string> = {
-  RUNNING: 'success',
-  STARTING: 'processing',
-  STOPPING: 'processing',
-  STOPPED: 'default',
-  ERROR: 'error',
-  EXPIRED: 'warning',
-  DESTROYED: 'default',
-};
 
 const formatError = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
@@ -137,20 +126,6 @@ export const SandboxManagerComponent = () => {
       refresh();
     } catch (error: any) {
       message.error(error.message || '操作失败');
-    }
-  };
-
-  // 打开开发环境：签发一次性 token 后新标签页跳转跳板地址
-  const openDevEndpoint = async (record: DataSandboxRecord) => {
-    try {
-      const result = responseData(
-        await DataSandboxApi.devToken(record.id),
-        null as any,
-      );
-      if (!result || !result.url) throw new Error('签发访问地址失败');
-      window.open(result.url, '_blank');
-    } catch (error: any) {
-      message.error(error.message || '打开开发环境失败');
     }
   };
 
@@ -306,31 +281,10 @@ export const SandboxManagerComponent = () => {
       ),
     },
     {
-      title: '环境镜像',
-      dataIndex: 'image_name',
-      render: (value: string) => value || '-',
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (value: string, record: DataSandboxRecord) => (
-        <Tooltip title={record.last_error || ''}>
-          <Tag color={statusColors[value] || 'default'}>{value}</Tag>
-        </Tooltip>
-      ),
-    },
-    {
-      title: '分配状态',
-      dataIndex: 'alloc_state',
-      render: (value: string) => {
-        if (!value) return '-';
-        const allocColors: Record<string, string> = {
-          RESERVED: 'blue',
-          BOUND: 'green',
-          RELEASED: 'default',
-        };
-        return <Tag color={allocColors[value] || 'default'}>{value}</Tag>;
-      },
+      title: '所属项目名',
+      dataIndex: 'project_name',
+      render: (value: string, record: DataSandboxRecord) =>
+        value || record.project_id || '-',
     },
     {
       title: '资源配额',
@@ -365,29 +319,12 @@ export const SandboxManagerComponent = () => {
             const creator = record.created_by === loginService?.userInfo?.name;
             return (
               <>
-                {record.status === 'STOPPING' ? (
+                {record.status === 'STOPPING' && (
                   <Button disabled size="small" type="link">
                     停止中
                   </Button>
-                ) : record.status === 'STARTING' ? (
-                  <Button
-                    disabled={!creator}
-                    size="small"
-                    type="link"
-                    onClick={() => action(record.id, 'START')}
-                  >
-                    重试启动
-                  </Button>
-                ) : record.status !== 'RUNNING' ? (
-                  <Button
-                    disabled={!creator}
-                    size="small"
-                    type="link"
-                    onClick={() => action(record.id, 'START')}
-                  >
-                    启动
-                  </Button>
-                ) : (
+                )}
+                {record.status === 'RUNNING' && (
                   <Button
                     disabled={!creator}
                     size="small"
@@ -397,19 +334,6 @@ export const SandboxManagerComponent = () => {
                     停止
                   </Button>
                 )}
-                {record.status === 'RUNNING' &&
-                record.endpoint &&
-                record.network_policy !== 'NO_NETWORK' ? (
-                  <Button
-                    size="small"
-                    type="link"
-                    disabled={!creator}
-                    onClick={() => openDevEndpoint(record)}
-                    style={{ color: '#1890ff' }}
-                  >
-                    打开开发环境
-                  </Button>
-                ) : null}
                 {record.network_policy === 'ALLOW_LIST' ? (
                   <Button
                     size="small"
@@ -442,14 +366,6 @@ export const SandboxManagerComponent = () => {
                   onClick={() => openChange(record, 'DATA_CHANGE')}
                 >
                   变更数据
-                </Button>
-                <Button
-                  disabled={!creator}
-                  size="small"
-                  type="link"
-                  onClick={() => openChange(record, 'CONFIG_CHANGE')}
-                >
-                  变更配置
                 </Button>
                 <Button
                   size="small"
@@ -489,14 +405,13 @@ export const SandboxManagerComponent = () => {
 
   return (
     <MvpPage
-      title="沙箱资源申请"
-      description="按项目申请沙箱，并统一提交延期、规格、配置、数据挂载与销毁申请"
+      title="沙箱列表"
+      description="查看项目沙箱，并提交延期、规格、数据挂载与销毁申请"
       error={error}
       onRetry={refresh}
       extra={
         <>
           <RefreshButton loading={loading} onClick={refresh} />
-          <Button onClick={() => setImageOpen(true)}>环境镜像</Button>
           <Button
             type="primary"
             onClick={() => {
@@ -582,7 +497,10 @@ export const SandboxManagerComponent = () => {
                 );
               }}
               options={projects
-                .filter((p) => checkAllApproved(p as API.ProjectVO))
+                .filter(
+                  (p) =>
+                    p.status !== 'ARCHIVED' && checkAllApproved(p as API.ProjectVO),
+                )
                 .map((p) => ({ value: p.projectId, label: p.projectName }))}
             />
           </Form.Item>
