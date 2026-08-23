@@ -23,6 +23,11 @@ import {
   DataSandboxRecord,
   responseData,
 } from '@/services/data-sandbox';
+import {
+  ManagedUserOption,
+  SystemUserManagementApi,
+} from '@/services/system-user-management';
+
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
 
 const modelStatusLabels: Record<string, string> = {
@@ -213,6 +218,10 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
   const [invokeRows, setInvokeRows] = useState('[\n  {"id": 1, "score": 60}\n]');
   const [invokeResult, setInvokeResult] = useState<DataSandboxRecord>();
   const [invokeLoading, setInvokeLoading] = useState(false);
+  const [authorizedUserOptions, setAuthorizedUserOptions] = useState<
+    ManagedUserOption[]
+  >([]);
+  const [authorizedUsersLoading, setAuthorizedUsersLoading] = useState(false);
 
   /* ------------------------------- 数据加载 ------------------------------- */
 
@@ -270,6 +279,19 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
     }
   }, []);
 
+  const refreshAuthorizedUserOptions = useCallback(async () => {
+    setAuthorizedUsersLoading(true);
+    try {
+      setAuthorizedUserOptions(
+        await SystemUserManagementApi.authorizationOptions(),
+      );
+    } catch (error: any) {
+      message.error(error.message || '加载授权用户失败');
+    } finally {
+      setAuthorizedUsersLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     refreshModels();
   }, [refreshModels]);
@@ -285,6 +307,27 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
   useEffect(() => {
     refreshApis();
   }, [refreshApis]);
+
+  useEffect(() => {
+    if (apiCreateOpen || apiDetailOpen) {
+      refreshAuthorizedUserOptions();
+    }
+  }, [apiCreateOpen, apiDetailOpen, refreshAuthorizedUserOptions]);
+
+  useEffect(() => {
+    if (!apiDetailItem) return;
+    apiUpdateForm.setFieldsValue({
+      authorizedUsers: Array.isArray(apiDetailItem.authorized_users)
+        ? apiDetailItem.authorized_users
+        : [],
+      ipWhitelist: Array.isArray(apiDetailItem.ip_whitelist)
+        ? apiDetailItem.ip_whitelist
+        : [],
+      validFrom: apiDetailItem.valid_from || '',
+      validTo: apiDetailItem.valid_to || '',
+      description: apiDetailItem.description || '',
+    });
+  }, [apiDetailItem, apiUpdateForm]);
 
   useEffect(() => {
     if (registerOpen) {
@@ -890,6 +933,13 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
   const approvalModel = approval?.model as DataSandboxRecord | undefined;
   const detailTests = (approval?.tests || []) as DataSandboxRecord[];
   const apiItem = apiDetailItem;
+  const authorizedUserSelectOptions = authorizedUserOptions.map((user) => ({
+    value: user.account,
+    label:
+      user.displayName === user.account
+        ? user.account
+        : `${user.displayName}（${user.account}）`,
+  }));
 
   return (
     <MvpPage
@@ -1530,7 +1580,14 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
             <Input placeholder="如：信贷评分服务" />
           </Form.Item>
           <Form.Item name="authorizedUsers" label="授权用户（空=仅凭据调用）">
-            <Select mode="tags" placeholder="输入用户名后回车，如 bob" open={false} />
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择已启用用户"
+              options={authorizedUserSelectOptions}
+              loading={authorizedUsersLoading}
+            />
           </Form.Item>
           <Form.Item name="ipWhitelist" label="IP 白名单（空=任意 IP；支持 CIDR）">
             <Select mode="tags" placeholder="如 10.0.0.0/8、1.2.3.4" open={false} />
@@ -1679,41 +1736,37 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
               <Form.Item
                 name="authorizedUsers"
                 label="授权用户（空=仅凭据调用；凭证调用者不受约束）"
-                initialValue={
-                  Array.isArray(apiItem.authorized_users)
-                    ? apiItem.authorized_users
-                    : []
-                }
               >
-                <Select mode="tags" placeholder="输入用户名后回车" open={false} />
+                <Select
+                  mode="multiple"
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="请选择已启用用户"
+                  options={authorizedUserSelectOptions}
+                  loading={authorizedUsersLoading}
+                />
               </Form.Item>
               <Form.Item
                 name="ipWhitelist"
                 label="IP 白名单（空=任意 IP）"
-                initialValue={
-                  Array.isArray(apiItem.ip_whitelist) ? apiItem.ip_whitelist : []
-                }
               >
                 <Select mode="tags" placeholder="IP 或 CIDR" open={false} />
               </Form.Item>
               <Form.Item
                 name="validFrom"
                 label="生效时间"
-                initialValue={apiItem.valid_from || ''}
               >
                 <Input placeholder="yyyy-MM-dd HH:mm:ss" />
               </Form.Item>
               <Form.Item
                 name="validTo"
                 label="失效时间"
-                initialValue={apiItem.valid_to || ''}
               >
                 <Input placeholder="yyyy-MM-dd HH:mm:ss" />
               </Form.Item>
               <Form.Item
                 name="description"
                 label="描述"
-                initialValue={apiItem.description || ''}
               >
                 <Input.TextArea rows={2} />
               </Form.Item>

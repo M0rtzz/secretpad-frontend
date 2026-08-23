@@ -15,6 +15,11 @@ export type ManagedUser = {
   createdAt: string;
 };
 
+export type ManagedUserOption = {
+  account: string;
+  displayName: string;
+};
+
 const base = '/api/v1alpha1/system/users';
 
 const headers = () => ({
@@ -39,6 +44,8 @@ const post = <T>(path: string, data: Record<string, unknown>) =>
 
 export const SystemUserManagementApi = {
   list: () => get<ManagedUser[]>('/list'),
+  authorizationOptions: () =>
+    get<ManagedUserOption[]>('/authorization-options'),
   create: (data: Pick<ManagedUser, 'account' | 'displayName'>) =>
     post<ManagedUser>('/create', data),
   update: (data: Pick<ManagedUser, 'account' | 'displayName'>) =>
