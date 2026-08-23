@@ -33,11 +33,15 @@ const INVOKE_ENDPOINT = '/api/v1alpha1/model-api/invoke';
 const apiStatusLabels: Record<string, string> = {
   ENABLED: '启用',
   DISABLED: '停用',
+  PENDING: '供数方审批中',
+  REJECTED: '已驳回',
 };
 
 const apiStatusColors: Record<string, string> = {
   ENABLED: 'success',
   DISABLED: 'default',
+  PENDING: 'processing',
+  REJECTED: 'error',
 };
 
 const artifactTypeLabels: Record<string, string> = {
@@ -277,6 +281,17 @@ export const ModelCenterComponent = ({
         }),
         {},
       );
+      if (api.approvalRequired || api.status === 'PENDING') {
+        // 模型使用了供数方数据：先提交供数方审批，审批通过后自动发布为 API
+        message.success(
+          api.notice ||
+            '已提交供数方审批，审批通过后将自动发布为 API，请到「模型审批管理」查看',
+          4,
+        );
+        setPublishOpen(false);
+        refreshApis();
+        return;
+      }
       message.success('API 已发布');
       setPublishOpen(false);
       refreshApis();
@@ -510,12 +525,23 @@ export const ModelCenterComponent = ({
           <Button type="link" onClick={() => openDetail(row)}>
             详情
           </Button>
-          <Button type="link" onClick={() => toggleApi(row, row.status !== 'ENABLED')}>
-            {row.status === 'ENABLED' ? '停用' : '启用'}
-          </Button>
-          <Button type="link" onClick={() => regenerateSecret(row)}>
-            重发密钥
-          </Button>
+          {row.status === 'ENABLED' || row.status === 'DISABLED' ? (
+            <>
+              <Button
+                type="link"
+                onClick={() => toggleApi(row, row.status !== 'ENABLED')}
+              >
+                {row.status === 'ENABLED' ? '停用' : '启用'}
+              </Button>
+              <Button type="link" onClick={() => regenerateSecret(row)}>
+                重发密钥
+              </Button>
+            </>
+          ) : (
+            <Button type="link" disabled onClick={() => openDetail(row)}>
+              {row.status === 'REJECTED' ? '已驳回' : '审批中'}
+            </Button>
+          )}
           <Button type="link" danger onClick={() => deleteApi(row)}>
             删除
           </Button>

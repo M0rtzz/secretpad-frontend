@@ -577,6 +577,19 @@ export const DataModelApi = {
       method: 'POST',
       data,
     }),
+  /* 模型 API 供数方审批（我的申请 / 待我审批 / 详情 / 动作 / 撤回 / 在线调试） */
+  approvalMine: (params?: DataSandboxRecord) =>
+    modelApiGet<DataSandboxRecord[]>('/approvals/mine', params),
+  approvalPending: (params?: DataSandboxRecord) =>
+    modelApiGet<DataSandboxRecord[]>('/approvals/pending', params),
+  modelApiApprovalDetail: (id: string) =>
+    modelApiGet<DataSandboxRecord>('/approvals/detail', { id }),
+  modelApiApprovalAction: (data: DataSandboxRecord) =>
+    modelApiPost<DataSandboxRecord>('/approvals/action', data),
+  modelApiApprovalCancel: (id: string) =>
+    modelApiPost<DataSandboxRecord>('/approvals/cancel', { id }),
+  modelApiApprovalTest: (data: DataSandboxRecord) =>
+    modelApiPost<DataSandboxRecord>('/approvals/test', data),
 };
 
 export const responseData = <T>(response: DataSandboxResponse<T>, fallback: T): T => {
