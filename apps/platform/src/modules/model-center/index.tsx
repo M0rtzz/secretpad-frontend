@@ -599,12 +599,15 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
   const regenerateSecret = async (row: DataSandboxRecord) => {
     Modal.confirm({
       title: '重发调用密钥？',
-      content: '新密钥仅显示一次，旧密钥立即失效。',
+      content: '确认后旧密钥立即失效。新密钥仅显示一次，请生成后立即复制并妥善保存。',
+      okText: '确认重发',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
       onOk: async () => {
         try {
           const detail = responseData(await DataModelApi.regenerateSecret(row.id), {});
           setApiDetailItem(detail);
-          message.success('新密钥已生成');
+          message.success('新密钥已生成，请立即复制保存');
         } catch (error: any) {
           message.error(error.message || '重发失败');
         }
@@ -1570,8 +1573,7 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
                   key: 'secret',
                   label: '调用密钥',
                   children: apiItem.secret ? (
-                    <Typography.Text copyable code>
-                      {' '}
+                    <Typography.Text copyable={{ text: apiItem.secret }} code>
                       {apiItem.secret}
                     </Typography.Text>
                   ) : (
