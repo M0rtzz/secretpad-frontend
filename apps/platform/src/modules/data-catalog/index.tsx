@@ -735,7 +735,12 @@ export const DataCatalogComponent = () => {
       >
         <Form form={validityForm} layout="vertical" onFinish={submitValidity}>
           <Form.Item name="deadline" label={validityLabel} extra="留空表示不限制">
-            <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" allowClear />
+            <DatePicker
+              showTime={{ format: 'HH:mm:ss' }}
+              format="YYYY-MM-DD HH:mm:ss"
+              allowClear
+              style={{ width: '100%' }}
+            />
           </Form.Item>
         </Form>
       </Modal>

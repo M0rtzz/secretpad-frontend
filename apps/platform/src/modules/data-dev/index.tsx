@@ -974,7 +974,11 @@ export const DataDevComponent = () => {
             label="查看截止时间"
             rules={[{ required: true, message: '请设置查看截止时间' }]}
           >
-            <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
+            <DatePicker
+              showTime={{ format: 'HH:mm:ss' }}
+              format="YYYY-MM-DD HH:mm:ss"
+              style={{ width: '100%' }}
+            />
           </Form.Item>
           <Form.Item
             name="allowExport"
@@ -1000,7 +1004,11 @@ export const DataDevComponent = () => {
                 }),
               ]}
             >
-              <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
+              <DatePicker
+                showTime={{ format: 'HH:mm:ss' }}
+                format="YYYY-MM-DD HH:mm:ss"
+                style={{ width: '100%' }}
+              />
             </Form.Item>
           )}
         </Form>
@@ -1389,7 +1397,11 @@ export const DataDevComponent = () => {
                   label="查看截止时间"
                   rules={[{ required: true, message: '请设置开发结果查看截止时间' }]}
                 >
-                  <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
+                  <DatePicker
+                    showTime={{ format: 'HH:mm:ss' }}
+                    format="YYYY-MM-DD HH:mm:ss"
+                    style={{ width: '100%' }}
+                  />
                 </Form.Item>
                 <Form.Item
                   name="allowExport"
@@ -1417,7 +1429,11 @@ export const DataDevComponent = () => {
                       }),
                     ]}
                   >
-                    <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" />
+                    <DatePicker
+                      showTime={{ format: 'HH:mm:ss' }}
+                      format="YYYY-MM-DD HH:mm:ss"
+                      style={{ width: '100%' }}
+                    />
                   </Form.Item>
                 )}
               </Space>

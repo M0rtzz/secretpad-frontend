@@ -576,8 +576,7 @@ export const SandboxManagerComponent = () => {
             rules={[{ required: true, message: '请选择新的到期时间' }]}
           >
             <DatePicker
-              showTime
-              showSecond
+              showTime={{ format: 'HH:mm:ss' }}
               format="YYYY-MM-DD HH:mm:ss"
               disabledDate={(current) =>
                 current
