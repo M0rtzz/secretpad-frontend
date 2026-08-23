@@ -1032,6 +1032,77 @@ export const ModelReportsComponent = () => (
     {(context) => <ReportList sandboxId={context.sandbox.id} />}
   </ComputeContext>
 );
+
+const parseReportPayload = (value: unknown): DataSandboxRecord => {
+  if (value && typeof value === 'object') return value as DataSandboxRecord;
+  if (typeof value !== 'string' || !value) return {};
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+};
+
+const ReportPayloadDetail = ({ report }: { report: DataSandboxRecord }) => {
+  const payload = parseReportPayload(report.payload_json);
+  const preview = parseReportPayload(payload.preview || payload.resultPreview);
+  const header = Array.isArray(preview.header) ? (preview.header as string[]) : [];
+  const rows = Array.isArray(preview.rows) ? (preview.rows as unknown[][]) : [];
+  const resultRows = preview.resultRows ?? payload.resultRows ?? rows.length;
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Descriptions
+        bordered
+        size="small"
+        column={2}
+        items={[
+          { key: 'run', label: '运行批次', children: report.run_id || '-' },
+          {
+            key: 'component',
+            label: '组件',
+            children: payload.componentCode || report.component_id || '-',
+          },
+          { key: 'mode', label: '运行模式', children: payload.runMode || '-' },
+          { key: 'rows', label: '结果行数', children: String(resultRows ?? 0) },
+        ]}
+      />
+      {header.length ? (
+        <Table
+          size="small"
+          bordered
+          rowKey={(_, index) => String(index)}
+          pagination={
+            rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false
+          }
+          scroll={{ x: 'max-content', y: 420 }}
+          dataSource={rows}
+          columns={header.map((name, index) => ({
+            key: `${name}-${index}`,
+            title: name,
+            width: 140,
+            ellipsis: true,
+            render: (_: unknown, row: unknown[]) => {
+              const value = row[index];
+              return value === null || value === undefined ? '' : String(value);
+            },
+          }))}
+        />
+      ) : (
+        <Alert
+          type="warning"
+          showIcon
+          message="该历史记录没有可展示的逐行结果"
+          description="系统不会使用其他运行批次的最新结果替代当前历史记录。"
+        />
+      )}
+      <Divider orientation="left">原始报告数据</Divider>
+      <pre style={{ maxHeight: 240, overflow: 'auto', margin: 0 }}>
+        {JSON.stringify(payload, null, 2)}
+      </pre>
+    </Space>
+  );
+};
+
 const ReportList = ({ sandboxId }: { sandboxId: string }) => {
   const [rows, setRows] = useState<DataSandboxRecord[]>([]);
   const [type, setType] = useState('');
@@ -1101,11 +1172,7 @@ const ReportList = ({ sandboxId }: { sandboxId: string }) => {
         onCancel={() => setDetail(undefined)}
         footer={null}
       >
-        <pre style={{ maxHeight: 600, overflow: 'auto' }}>
-          {detail
-            ? JSON.stringify(JSON.parse(detail.payload_json || '{}'), null, 2)
-            : ''}
-        </pre>
+        {detail && <ReportPayloadDetail report={detail} />}
       </Modal>
     </MvpPage>
   );

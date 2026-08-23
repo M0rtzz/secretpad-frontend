@@ -281,8 +281,13 @@ export const DataComputeApi = {
     computeGet<DataSandboxRecord>('/canvas/run/status', { canvasId }),
   canvasRuns: (canvasId: string) =>
     computeGet<DataSandboxRecord[]>('/canvas/runs', { canvasId }),
-  canvasNodeOutput: (canvasId: string, nodeId: string, limit = 50) =>
-    computeGet<DataSandboxRecord>('/canvas/node/output', { canvasId, nodeId, limit }),
+  canvasNodeOutput: (canvasId: string, nodeId: string, runId = '', limit = 50) =>
+    computeGet<DataSandboxRecord>('/canvas/node/output', {
+      canvasId,
+      nodeId,
+      runId,
+      limit,
+    }),
   canvasNodeLogs: (canvasId: string, nodeId: string, runId = '') =>
     computeGet<DataSandboxRecord>('/canvas/node/logs', { canvasId, nodeId, runId }),
   canvasDataResources: (sandboxId: string) =>

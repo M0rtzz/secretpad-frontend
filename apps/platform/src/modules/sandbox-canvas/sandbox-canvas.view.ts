@@ -38,6 +38,7 @@ export class SandboxCanvasView extends Model {
 
   latestRun: DataSandboxRecord | null = null;
   selectedNodeId = '';
+  selectedRunId = '';
   drawer: SandboxDrawerType = '';
 
   /** 图级 undo/redo：graph 结构快照栈（X6 toJSON 字符串） */
@@ -110,13 +111,15 @@ export class SandboxCanvasView extends Model {
     this.canvas = canvas;
   }
 
-  openDrawer(type: SandboxDrawerType, nodeId = '') {
+  openDrawer(type: SandboxDrawerType, nodeId = '', runId = '') {
     this.selectedNodeId = nodeId;
+    this.selectedRunId = runId;
     this.drawer = type;
   }
 
   closeDrawer() {
     this.drawer = '';
+    this.selectedRunId = '';
   }
 
   /* ============================== 运行控制 ============================== */

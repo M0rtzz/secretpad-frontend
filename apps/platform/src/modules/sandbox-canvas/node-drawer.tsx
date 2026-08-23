@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Descriptions,
   Drawer,
@@ -25,6 +26,7 @@ export const NodeDrawer = () => {
   const [loading, setLoading] = useState(false);
   const [output, setOutput] = useState<Record<string, unknown>>({});
   const [logs, setLogs] = useState<Record<string, unknown>>({});
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!nodeId || (!isOutput && !isLogs)) return;
@@ -34,14 +36,23 @@ export const NodeDrawer = () => {
         if (isOutput) {
           setOutput(
             responseData(
-              await DataComputeApi.canvasNodeOutput(view.canvasId, nodeId, 100),
+              await DataComputeApi.canvasNodeOutput(
+                view.canvasId,
+                nodeId,
+                view.selectedRunId,
+                100,
+              ),
               {},
             ),
           );
         } else if (isLogs) {
           setLogs(
             responseData(
-              await DataComputeApi.canvasNodeLogs(view.canvasId, nodeId),
+              await DataComputeApi.canvasNodeLogs(
+                view.canvasId,
+                nodeId,
+                view.selectedRunId,
+              ),
               {},
             ),
           );
@@ -53,7 +64,7 @@ export const NodeDrawer = () => {
       }
     };
     load();
-  }, [nodeId, isOutput, isLogs, view.canvasId]);
+  }, [nodeId, isOutput, isLogs, view.canvasId, view.selectedRunId, reloadToken]);
 
   const schema = (output.schema as Record<string, string>[]) || [];
   const rows = (output.rows as unknown[][]) || [];
@@ -78,7 +89,7 @@ export const NodeDrawer = () => {
             <Button
               size="small"
               onClick={() => {
-                setOutput({});
+                setReloadToken((value) => value + 1);
               }}
             >
               重新加载
@@ -91,6 +102,9 @@ export const NodeDrawer = () => {
         {isOutput && (
           <>
             <Descriptions column={1} size="small">
+              <Descriptions.Item label="运行批次">
+                {String(output.runId || view.selectedRunId || '最近一次成功运行')}
+              </Descriptions.Item>
               <Descriptions.Item label="输出表">
                 {String(output.tableName || '')}
               </Descriptions.Item>
@@ -104,6 +118,15 @@ export const NodeDrawer = () => {
                 )}
               </Descriptions.Item>
             </Descriptions>
+            {output.previewOnly && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="该历史运行展示任务执行时保存的结果预览"
+                description="预览内容与运行批次一一对应，不会读取其他批次的最新输出表。"
+              />
+            )}
             {output.available ? (
               <Table
                 size="small"

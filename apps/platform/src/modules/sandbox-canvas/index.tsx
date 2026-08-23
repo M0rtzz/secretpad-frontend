@@ -612,6 +612,28 @@ const RecordsPanel = () => {
                   {String(nr.node_id)}
                 </Tag>
                 <span>{String(nr.status)}</span>
+                {nr.status === 'SUCCEEDED' && (
+                  <>
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() =>
+                        view.openDrawer('output', String(nr.node_id), String(run.id))
+                      }
+                    >
+                      结果
+                    </Button>
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() =>
+                        view.openDrawer('logs', String(nr.node_id), String(run.id))
+                      }
+                    >
+                      日志
+                    </Button>
+                  </>
+                )}
               </Space>
             ))}
           </div>
