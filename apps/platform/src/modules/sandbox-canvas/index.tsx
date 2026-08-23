@@ -84,10 +84,18 @@ export const SandboxCanvasWorkspace = () => {
   const view = useModel(SandboxCanvasView);
   const loginService = useModel(LoginService);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { computeCanvasId } = parse(window.location.search) as {
+  const {
+    computeCanvasId,
+    sandboxId: routeSandboxId,
+    projectId: routeProjectId,
+  } = parse(window.location.search) as {
     computeCanvasId?: string;
+    sandboxId?: string;
+    projectId?: string;
   };
   const canvasId = computeCanvasId || '';
+  const sandboxId = routeSandboxId || '';
+  const projectId = routeProjectId || '';
   const [modelOpen, setModelOpen] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
   const [modelCandidates, setModelCandidates] = useState<DataSandboxRecord[]>([]);
@@ -119,7 +127,7 @@ export const SandboxCanvasWorkspace = () => {
   // 初始化画布：canvasId 变化时重建 X6 graph（请求服务指向 data-compute canvas 端点）
   useEffect(() => {
     if (!canvasId) return;
-    view.canvasId = canvasId;
+    view.setContext(canvasId, sandboxId, projectId);
     sandboxDag.dispose();
     sandboxDag.addGraphEvents(eventHandler);
     const el = containerRef.current;
@@ -139,7 +147,7 @@ export const SandboxCanvasWorkspace = () => {
     return () => {
       sandboxDag.dispose();
     };
-  }, [canvasId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canvasId, sandboxId, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 画布随容器尺寸缩放
   useEffect(() => {

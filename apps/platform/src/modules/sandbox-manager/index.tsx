@@ -33,6 +33,23 @@ import { checkAllApproved } from '@/modules/p2p-project-list/components/common';
 const formatError = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 
+/** 挂载门禁同时遵循数据目录的使用时间窗与访问时间窗。 */
+const withinAssetValidity = (asset: DataSandboxRecord) => {
+  const now = dayjs();
+  const starts = [asset.control_valid_from, asset.access_start];
+  const ends = [asset.control_valid_until, asset.access_end];
+  if (
+    starts.some(
+      (value) => value && dayjs(value).isValid() && now.isBefore(dayjs(value)),
+    )
+  ) {
+    return false;
+  }
+  return !ends.some(
+    (value) => value && dayjs(value).isValid() && now.isAfter(dayjs(value)),
+  );
+};
+
 export const SandboxManagerComponent = () => {
   const { search } = useLocation();
   const ownerId = String(parse(search).ownerId || '');
@@ -198,7 +215,8 @@ export const SandboxManagerComponent = () => {
         DataAssetApi.sandboxMounts(record.id),
       ]);
       const projectAssets = responseData(projectData, []).filter(
-        (asset: DataSandboxRecord) => asset.data_stage === 'PROCESSED',
+        (asset: DataSandboxRecord) =>
+          asset.data_stage === 'PROCESSED' && withinAssetValidity(asset),
       );
       const mountedAssets = responseData(currentMounts, []).map(
         (mount: DataSandboxRecord) => ({
@@ -419,7 +437,7 @@ export const SandboxManagerComponent = () => {
           form={form}
           layout="vertical"
           initialValues={{
-            validDays: 7,
+            expiresAt: dayjs().add(7, 'day').second(0),
             cpuCores: 2,
             memoryGb: 4,
             gpuCount: 0,
@@ -437,6 +455,7 @@ export const SandboxManagerComponent = () => {
               responseData(
                 await DataSandboxApi.approvalSubmit({
                   ...values,
+                  expiresAt: values.expiresAt.format('YYYY-MM-DDTHH:mm:ss'),
                   ownerId: currentNodeId,
                   imageId: defaultImage.id,
                   networkPolicy: 'INTERNAL_ONLY',
@@ -476,7 +495,8 @@ export const SandboxManagerComponent = () => {
                 form.setFieldValue('datasetAssetIds', []);
                 setCreateAssets(
                   responseData(await DataAssetApi.projectAssets(projectId), []).filter(
-                    (asset: DataSandboxRecord) => asset.data_stage === 'PROCESSED',
+                    (asset: DataSandboxRecord) =>
+                      asset.data_stage === 'PROCESSED' && withinAssetValidity(asset),
                   ),
                 );
               }}
@@ -511,10 +531,21 @@ export const SandboxManagerComponent = () => {
             <Form.Item name="storageGb" label="存储（GB）">
               <InputNumber min={1} />
             </Form.Item>
-            <Form.Item name="validDays" label="有效期（天）">
-              <InputNumber min={1} max={365} />
-            </Form.Item>
           </Space>
+          <Form.Item
+            name="expiresAt"
+            label="到期时间"
+            rules={[{ required: true, message: '请选择到期时间' }]}
+          >
+            <DatePicker
+              showTime={{ format: 'HH:mm:ss' }}
+              format="YYYY-MM-DD HH:mm:ss"
+              disabledDate={(current) =>
+                current && current.isBefore(dayjs().startOf('day'))
+              }
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 

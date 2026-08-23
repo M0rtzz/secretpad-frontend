@@ -433,14 +433,21 @@ export const DataCatalogComponent = () => {
                   <span style={validityValueStyle}>
                     {item.value ? formatTime(item.value) : '未设置'}
                   </span>
-                  <Button
-                    type="link"
-                    size="small"
-                    style={validityActionStyle}
-                    onClick={() => openValidityEdit(row, item.field)}
+                  <Tooltip
+                    title={
+                      row.owned === false ? '非本机构数据不可更改有效期' : undefined
+                    }
                   >
-                    更改
-                  </Button>
+                    <Button
+                      type="link"
+                      size="small"
+                      style={validityActionStyle}
+                      disabled={row.owned === false}
+                      onClick={() => openValidityEdit(row, item.field)}
+                    >
+                      更改
+                    </Button>
+                  </Tooltip>
                 </div>
               )),
           },

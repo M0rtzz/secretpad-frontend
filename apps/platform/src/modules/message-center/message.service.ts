@@ -51,6 +51,8 @@ export class MessageService extends Model {
    */
   messageList: API.MessageVO[] = [];
 
+  private listRequestSequence = 0;
+
   /**
    * Get message list
    *
@@ -58,11 +60,18 @@ export class MessageService extends Model {
    * @param type is pending or applied
    */
   getMessageList = async (params: API.MessageListRequest) => {
+    const requestSequence = ++this.listRequestSequence;
     this.loading = true;
-    const { data } = await list(params);
-    this.loading = false;
-    this.messageList = data?.messages || [];
-    return data;
+    try {
+      const { data } = await list(params);
+      if (requestSequence !== this.listRequestSequence) return undefined;
+      this.messageList = data?.messages || [];
+      return data;
+    } finally {
+      if (requestSequence === this.listRequestSequence) {
+        this.loading = false;
+      }
+    }
   };
 
   /**

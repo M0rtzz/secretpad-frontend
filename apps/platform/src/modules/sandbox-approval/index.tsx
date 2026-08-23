@@ -79,9 +79,12 @@ const ApprovalParameters = ({ detail }: { detail?: DataSandboxRecord }) => {
   if (!detail) return null;
   const payload = parseApprovalPayload(detail.payload_json);
   const approvalType = String(detail.approval_type || '');
-  const datasets = Array.isArray(payload.datasetAssetIds)
-    ? payload.datasetAssetIds.join('、') || '无'
-    : '无';
+  const datasetValues = Array.isArray(payload.datasetNames)
+    ? payload.datasetNames
+    : Array.isArray(payload.datasetAssetIds)
+    ? payload.datasetAssetIds
+    : [];
+  const datasets = datasetValues.join('、') || '无';
   const common = payload.reason
     ? [{ key: 'reason', label: '申请原因', children: payload.reason }]
     : [];
@@ -101,7 +104,11 @@ const ApprovalParameters = ({ detail }: { detail?: DataSandboxRecord }) => {
           payload.gpuCount || 0
         } / ${payload.storageGb || 0}GB`,
       },
-      { key: 'valid', label: '有效期', children: `${payload.validDays || '-'} 天` },
+      {
+        key: 'expires',
+        label: '到期时间',
+        children: formatTime(payload.expiresAt),
+      },
     ],
     RENEW: [
       {
@@ -124,7 +131,13 @@ const ApprovalParameters = ({ detail }: { detail?: DataSandboxRecord }) => {
       { key: 'image', label: '环境镜像', children: payload.imageId || '-' },
       { key: 'network', label: '网络策略', children: payload.networkPolicy || '-' },
     ],
-    RECYCLE: [],
+    RECYCLE: [
+      {
+        key: 'sandboxName',
+        label: '沙箱名称',
+        children: payload.sandboxName || payload.name || '-',
+      },
+    ],
   };
   const items = parameterItems[approvalType] || [];
   return (

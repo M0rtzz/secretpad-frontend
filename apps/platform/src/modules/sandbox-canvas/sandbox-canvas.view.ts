@@ -60,6 +60,30 @@ export class SandboxCanvasView extends Model {
     this.projectId = projectId || '';
   }
 
+  /** 路由切换沙箱或画布时清空上一画布的共享状态，避免跨沙箱复用。 */
+  setContext(canvasId: string, sandboxId: string, projectId: string) {
+    const changed =
+      this.canvasId !== canvasId ||
+      this.sandboxId !== sandboxId ||
+      this.projectId !== projectId;
+    this.canvasId = canvasId;
+    this.sandboxId = sandboxId;
+    this.projectId = projectId;
+    if (!changed) return;
+    this.canvas = {};
+    this.components = [];
+    this.resources = [];
+    this.resourceColumns = {};
+    this.versions = [];
+    this.runs = [];
+    this.latestRun = null;
+    this.selectedNodeId = '';
+    this.selectedRunId = '';
+    this.drawer = '';
+    this.historyStack = [];
+    this.historyIndex = -1;
+  }
+
   /** 进入画布时一次性加载组件库 / 数据资源 / 模板 / 版本 / 运行记录 */
   async init() {
     await Promise.all([

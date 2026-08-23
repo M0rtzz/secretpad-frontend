@@ -9,6 +9,7 @@ import { Empty, Form, Modal, Select, Table, Tag, message } from 'antd';
 import { Button, Typography, Tooltip, Input, Space } from 'antd';
 import { Spin } from 'antd';
 import classNames from 'classnames';
+import dayjs from 'dayjs';
 import { parse } from 'query-string';
 import type { ChangeEvent } from 'react';
 import { useEffect, useState } from 'react';
@@ -54,6 +55,16 @@ export enum TabKey {
   'PIPELINES' = 'pipelines',
   'TASKS' = 'tasks',
 }
+
+/** 项目挂载目录沿用数据目录的访问时间窗，边界为空表示不限制。 */
+const withinAccessWindow = (row: DataSandboxRecord) => {
+  const now = dayjs();
+  const start = row.access_start ? dayjs(row.access_start) : undefined;
+  const end = row.access_end ? dayjs(row.access_end) : undefined;
+  if (start?.isValid() && now.isBefore(start)) return false;
+  if (end?.isValid() && now.isAfter(end)) return false;
+  return true;
+};
 
 export const P2pProjectListComponent: React.FC = () => {
   const projectListModel = useModel(ProjectListModel);
@@ -462,29 +473,53 @@ export const P2pProjectListComponent: React.FC = () => {
             },
             {
               title: '有效期',
-              dataIndex: 'valid_until',
-              render: (v: string) => (v ? formatTimestamp(v) : '长期有效'),
+              width: 260,
+              render: (_: unknown, row: DataSandboxRecord) => (
+                <Space direction="vertical" size={0}>
+                  <span>
+                    访问截止时间：
+                    {row.access_end ? formatTimestamp(row.access_end) : '未设置'}
+                  </span>
+                  <span>
+                    使用截止时间：
+                    {row.control_valid_until
+                      ? formatTimestamp(row.control_valid_until)
+                      : '未设置'}
+                  </span>
+                </Space>
+              ),
             },
             {
               title: '操作',
               render: (_: unknown, row: DataSandboxRecord) => (
-                <Button
-                  type="link"
-                  onClick={async () => {
-                    if (row.owned === false && row.modality !== 'IMAGE') {
-                      setPreview({
-                        asset: row,
-                        columns: row.schema_columns || [],
-                        rows: [],
-                        sharedMetadataOnly: true,
-                      });
-                      return;
-                    }
-                    setPreview(responseData(await DataAssetApi.preview(row.id, 5), {}));
-                  }}
+                <Tooltip
+                  title={
+                    withinAccessWindow(row)
+                      ? undefined
+                      : '当前不在访问有效期内，不可预览'
+                  }
                 >
-                  预览
-                </Button>
+                  <Button
+                    type="link"
+                    disabled={!withinAccessWindow(row)}
+                    onClick={async () => {
+                      if (row.owned === false && row.modality !== 'IMAGE') {
+                        setPreview({
+                          asset: row,
+                          columns: row.schema_columns || [],
+                          rows: [],
+                          sharedMetadataOnly: true,
+                        });
+                        return;
+                      }
+                      setPreview(
+                        responseData(await DataAssetApi.preview(row.id, 5), {}),
+                      );
+                    }}
+                  >
+                    预览
+                  </Button>
+                </Tooltip>
               ),
             },
           ]}

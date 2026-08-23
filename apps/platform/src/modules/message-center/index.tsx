@@ -115,6 +115,10 @@ export const MessageComponent: React.FC = () => {
   useEffect(() => {
     const onViewMount = async () => {
       const { active, ownerId } = parse(window.location.search);
+      // 工作台和消息中心共享 MessageModel，进入页面时重置页面筛选条件，
+      // 避免工作台沿用消息中心中不可见的筛选值。
+      viewInstance.selectType = SelectOptionsValueEnum.ALL;
+      viewInstance.search = '';
       if (ownerId) {
         viewInstance.ownerId = ownerId as string;
       }
@@ -224,7 +228,7 @@ export const MessageComponent: React.FC = () => {
                 activeTab !== MessageActiveTabType.APPLY) ||
                 !isP2PWorkbench(pathname)) && (
                 <Select
-                  defaultValue={SelectOptionsValueEnum.ALL}
+                  value={viewInstance.selectType}
                   style={{ width: 120 }}
                   onChange={(value) => {
                     viewInstance.changeSelect(value);
@@ -439,6 +443,7 @@ export class MessageModel extends Model {
   };
 
   changeSelect = (value: SelectOptionsValueEnum) => {
+    this.pageNumber = 1;
     this.selectType = value;
   };
 
@@ -497,6 +502,7 @@ export class MessageModel extends Model {
         this.selectType === SelectOptionsValueEnum.ALL ? undefined : this.selectType,
       keyWord: this.search,
     });
+    if (!data) return;
     this.totalNum = data?.total || 0;
 
     if (getProcessMessage) {
