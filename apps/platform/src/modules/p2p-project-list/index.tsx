@@ -354,22 +354,7 @@ export const P2pProjectListComponent: React.FC = () => {
                       </div>
                       <div className={styles.time}>
                         环境状态：
-                        {(() => {
-                          const related = sandboxEnvironments.filter(
-                            (sandbox) =>
-                              sandbox.project_id === item.projectId && !sandbox.deleted,
-                          );
-                          if (!related.length) return '未申请';
-                          if (related.some((sandbox) => sandbox.status === 'RUNNING'))
-                            return '运行中';
-                          if (
-                            related.some((sandbox) =>
-                              ['APPROVED', 'STARTING'].includes(sandbox.status),
-                            )
-                          )
-                            return '申请/启动中';
-                          return related.map((sandbox) => sandbox.status).join('、');
-                        })()}
+                        {item.status === ProjectStatus.ARCHIVED ? '已归档' : '正常'}
                       </div>
                     </div>
                     <div className={styles.bootom}>

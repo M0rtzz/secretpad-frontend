@@ -37,7 +37,6 @@ export const P2PWorkbenchComponent = () => {
           </div>
         </div>
         <div className={classNames(styles.titleDescContent, styles.flexContent)}>
-          <div className={styles.titleDesc}>科技护航数据安全，开源加速数据流通</div>
           {/* 暂无 */}
           {/* <div>
             <Button size="small" type="primary" shape="round">

@@ -25,7 +25,6 @@ export const LoginForm = (props: {
       <Title level={3} className={styles.title}>
         数据沙箱登录
       </Title>
-      <p className={styles.slogan}>科技护航数据安全，开源加速数据流通</p>
       <Form
         name="basic"
         initialValues={{ remember: true }}

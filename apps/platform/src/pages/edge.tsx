@@ -98,6 +98,12 @@ const menuItems: {
   children?: any[];
 }[] = [
   {
+    label: '工作台',
+    icon: <Icon component={Workbench} />,
+    component: <P2PWorkbenchComponent />,
+    key: 'workbench',
+  },
+  {
     label: '我的项目',
     icon: <Icon component={projectManager} />,
     component: <P2pProjectListComponent />,
@@ -152,12 +158,6 @@ const menuItems: {
     icon: <CalculatorOutlined />,
     key: 'data-compute',
     component: <DataComputeEntryComponent />,
-  },
-  {
-    label: '工作台',
-    icon: <Icon component={Workbench} />,
-    component: <P2PWorkbenchComponent />,
-    key: 'workbench',
   },
   {
     label: '合作节点',
