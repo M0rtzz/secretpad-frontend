@@ -307,6 +307,7 @@ export const DataDevComponent = () => {
         Modal.info({
           title: `制品 ${row.name} v${latest.version}`,
           width: 640,
+          okText: '确认',
           content: (
             <Space direction="vertical" style={{ width: '100%' }}>
               <div>
@@ -325,6 +326,7 @@ export const DataDevComponent = () => {
         Modal.info({
           title: `制品 ${row.name} v${latest.version}`,
           width: 720,
+          okText: '确认',
           content: (
             <pre
               style={{
@@ -749,10 +751,8 @@ export const DataDevComponent = () => {
                     style={{ width: 130 }}
                     options={[
                       { value: '', label: '全部状态' },
-                      ...Object.entries(statusLabels).map(([value, label]) => ({
-                        value,
-                        label,
-                      })),
+                      { value: 'SUCCEEDED', label: '成功' },
+                      { value: 'FAILED', label: '失败' },
                     ]}
                   />
                   <Select
@@ -796,32 +796,27 @@ export const DataDevComponent = () => {
                   scroll={{ x: 1300 }}
                   columns={[
                     {
-                      title: '任务',
-                      dataIndex: 'id',
-                      render: (v: string, row: DataSandboxRecord) => (
-                        <Space direction="vertical" size={0}>
-                          <strong>{row.name || v}</strong>
-                          <span style={{ color: '#888' }}>{v}</span>
-                        </Space>
+                      title: '任务名称',
+                      dataIndex: 'name',
+                      render: (value: string) => value || '-',
+                    },
+                    {
+                      title: '类型',
+                      dataIndex: 'exec_type',
+                      render: (value: string) => (
+                        <Tag color={artifactTypeColors[value]}>
+                          {execTypeLabels[value] || value}
+                        </Tag>
                       ),
                     },
                     {
-                      title: '类型 / 模式',
-                      render: (_: unknown, row: DataSandboxRecord) => (
-                        <Space size={4}>
-                          <Tag color={artifactTypeColors[row.exec_type]}>
-                            {execTypeLabels[row.exec_type] || row.exec_type}
-                          </Tag>
-                          <Tag color={row.run_mode === 'PROD' ? 'orange' : 'cyan'}>
-                            {runModeLabels[row.run_mode] || row.run_mode}
-                          </Tag>
-                        </Space>
+                      title: '模式',
+                      dataIndex: 'run_mode',
+                      render: (value: string) => (
+                        <Tag color={value === 'PROD' ? 'orange' : 'cyan'}>
+                          {runModeLabels[value] || value}
+                        </Tag>
                       ),
-                    },
-                    {
-                      title: '源表',
-                      render: (_: unknown, row: DataSandboxRecord) =>
-                        `${row.source_node_id}/${row.source_datatable_id}`,
                     },
                     {
                       title: '状态',
@@ -888,7 +883,11 @@ export const DataDevComponent = () => {
                       dataSource={resultControls}
                       columns={[
                         { title: '开发结果', dataIndex: 'name' },
-                        { title: '结果表', dataIndex: 'table_name' },
+                        {
+                          title: '任务名称',
+                          dataIndex: 'task_name',
+                          render: (value: string) => value || '-',
+                        },
                         { title: '行数', dataIndex: 'row_count' },
                         {
                           title: '查看截止时间',
@@ -896,17 +895,13 @@ export const DataDevComponent = () => {
                           render: (value: string) => formatTime(value),
                         },
                         {
-                          title: '导出',
-                          render: (_: unknown, row: DataSandboxRecord) =>
-                            row.allow_export ? (
-                              <Tag color={row.canExport ? 'success' : 'default'}>
-                                {row.canExport
-                                  ? `允许至 ${formatTime(row.export_until)}`
-                                  : '已截止'}
-                              </Tag>
-                            ) : (
-                              <Tag>禁止导出</Tag>
-                            ),
+                          title: '是否允许导出',
+                          dataIndex: 'allow_export',
+                          render: (value: boolean) => (
+                            <Tag color={value ? 'success' : 'default'}>
+                              {value ? '是' : '否'}
+                            </Tag>
+                          ),
                         },
                         {
                           title: '操作',
@@ -1114,6 +1109,7 @@ export const DataDevComponent = () => {
                         Modal.info({
                           title: `版本 ${row.version} 内容`,
                           width: 720,
+                          okText: '确认',
                           content: (
                             <pre
                               style={{

@@ -1,5 +1,6 @@
 import {
   Button,
+  Descriptions,
   Drawer,
   Form,
   Input,
@@ -64,6 +65,80 @@ const statusColors: Record<string, string> = {
 
 const REVIEWABLE = ['DATA_PROVIDER_REVIEW'];
 const CANCELLABLE = ['DATA_PROVIDER_REVIEW', 'APPROVED'];
+
+const parseApprovalPayload = (value: unknown): DataSandboxRecord => {
+  if (value && typeof value === 'object') return value as DataSandboxRecord;
+  try {
+    return JSON.parse(String(value || '{}'));
+  } catch {
+    return {};
+  }
+};
+
+const ApprovalParameters = ({ detail }: { detail?: DataSandboxRecord }) => {
+  if (!detail) return null;
+  const payload = parseApprovalPayload(detail.payload_json);
+  const approvalType = String(detail.approval_type || '');
+  const datasets = Array.isArray(payload.datasetAssetIds)
+    ? payload.datasetAssetIds.join('、') || '无'
+    : '无';
+  const common = payload.reason
+    ? [{ key: 'reason', label: '申请原因', children: payload.reason }]
+    : [];
+  const parameterItems: Record<
+    string,
+    Array<{ key: string; label: string; children: unknown }>
+  > = {
+    CREATE: [
+      { key: 'name', label: '沙箱名称', children: payload.name || '-' },
+      { key: 'description', label: '沙箱描述', children: payload.description || '-' },
+      { key: 'project', label: '所属项目', children: payload.projectId || '-' },
+      { key: 'datasets', label: '挂载数据', children: datasets },
+      {
+        key: 'quota',
+        label: '资源配额',
+        children: `${payload.cpuCores || 0}C / ${payload.memoryGb || 0}GB / GPU ${
+          payload.gpuCount || 0
+        } / ${payload.storageGb || 0}GB`,
+      },
+      { key: 'valid', label: '有效期', children: `${payload.validDays || '-'} 天` },
+    ],
+    RENEW: [
+      {
+        key: 'expires',
+        label: '新的到期时间',
+        children: formatTime(payload.expiresAt),
+      },
+    ],
+    SPEC_CHANGE: [
+      {
+        key: 'quota',
+        label: '新资源配额',
+        children: `${payload.cpuCores || 0}C / ${payload.memoryGb || 0}GB / GPU ${
+          payload.gpuCount || 0
+        } / ${payload.storageGb || 0}GB`,
+      },
+    ],
+    DATA_CHANGE: [{ key: 'datasets', label: '挂载数据', children: datasets }],
+    CONFIG_CHANGE: [
+      { key: 'image', label: '环境镜像', children: payload.imageId || '-' },
+      { key: 'network', label: '网络策略', children: payload.networkPolicy || '-' },
+    ],
+    RECYCLE: [],
+  };
+  const items = parameterItems[approvalType] || [];
+  return (
+    <Descriptions
+      bordered
+      size="small"
+      column={2}
+      items={[...items, ...common].map((item) => ({
+        ...item,
+        children: String(item.children ?? '-'),
+      }))}
+    />
+  );
+};
 
 export const SandboxApprovalComponent = () => {
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
@@ -407,7 +482,7 @@ export const SandboxApprovalComponent = () => {
             ]}
           />
           <div>申请参数：</div>
-          <pre style={{ whiteSpace: 'pre-wrap' }}>{detail?.payload_json}</pre>
+          <ApprovalParameters detail={detail} />
         </Space>
       </Modal>
     </MvpPage>

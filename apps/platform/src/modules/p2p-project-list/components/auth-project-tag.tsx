@@ -1,5 +1,4 @@
 import {
-  Divider,
   Form,
   Input,
   Modal,
@@ -152,7 +151,7 @@ export const AuthProjectTag = (props: IProps) => {
         {currentProcessList.map((item) => {
           return (
             <div className={styles.processContent} key={item.id}>
-              <Space>
+              <Space className={styles.processRow}>
                 <Tag className={styles.tagProcess}>受邀</Tag>
                 <div className={styles.nodeName}>
                   {/* <DatabaseOutlined /> */}
@@ -163,9 +162,14 @@ export const AuthProjectTag = (props: IProps) => {
                 currentInst.id === item.id &&
                 item.status === StatusEnum.PROCESS &&
                 voteId ? (
-                  <Space>
+                  <Space
+                    direction="vertical"
+                    size={4}
+                    align="center"
+                    className={styles.invitationActions}
+                  >
                     <div className={styles.agree} onClick={openApprove}>
-                      同意并挂载数据
+                      同意
                     </div>
                     <Popconfirm
                       title="你确定要拒绝吗？"
@@ -196,7 +200,6 @@ export const AuthProjectTag = (props: IProps) => {
                     >
                       <div className={styles.reject}>拒绝</div>
                     </Popconfirm>
-                    <Divider type="vertical" />
                     <Link
                       onClick={handleOpenProjectDetail}
                     >{`共${processList.length}方机构`}</Link>

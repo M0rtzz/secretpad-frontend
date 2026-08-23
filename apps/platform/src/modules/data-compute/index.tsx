@@ -118,9 +118,9 @@ const ComputeContext = ({
         message={`${context.project?.name || context.sandbox?.project_id} / ${
           context.sandbox?.name
         }`}
-        description={`沙箱状态：${context.sandbox?.status}；已挂载数据：${
-          context.mounts?.length || 0
-        } 个`}
+        description={`沙箱状态：${
+          context.sandbox?.status === 'EXPIRED' ? '过期' : '正常'
+        }`}
         action={
           <Button onClick={() => history.push(sandboxListUrl())}>切换沙箱</Button>
         }
@@ -133,9 +133,6 @@ const ComputeContext = ({
 export const DataComputeHomeComponent = () => {
   const [projects, setProjects] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [mountSandbox, setMountSandbox] = useState<DataSandboxRecord>();
-  const [context, setContext] = useState<DataSandboxRecord>();
-  const [form] = Form.useForm();
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -147,20 +144,6 @@ export const DataComputeHomeComponent = () => {
     }
   }, []);
   useEffect(() => void refresh(), [refresh]);
-  const openMount = async (sandbox: DataSandboxRecord) => {
-    try {
-      setMountSandbox(sandbox);
-      const nextContext = responseData(await DataComputeApi.context(sandbox.id), {});
-      setContext(nextContext);
-      form.setFieldsValue({
-        assetIds: (nextContext.mounts || [])
-          .filter((mount: DataSandboxRecord) => mount.status === 'READY')
-          .map((mount: DataSandboxRecord) => mount.asset_id),
-      });
-    } catch (e: any) {
-      message.error(e.message || '加载可挂载数据失败');
-    }
-  };
   return (
     <MvpPage
       title="数据计算首页"
@@ -184,8 +167,8 @@ export const DataComputeHomeComponent = () => {
                     size="small"
                     title={sandbox.name}
                     extra={
-                      <Tag color={sandbox.status === 'RUNNING' ? 'green' : 'default'}>
-                        {sandbox.status}
+                      <Tag color={sandbox.status === 'EXPIRED' ? 'error' : 'success'}>
+                        {sandbox.status === 'EXPIRED' ? '过期' : '正常'}
                       </Tag>
                     }
                   >
@@ -196,9 +179,6 @@ export const DataComputeHomeComponent = () => {
                       </Descriptions.Item>
                       <Descriptions.Item label="有效期">
                         {formatTime(sandbox.expires_at)}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="挂载数据">
-                        {sandbox.mount_count || 0} 个
                       </Descriptions.Item>
                       <Descriptions.Item label="计算任务">
                         {sandbox.task_count || 0} 个
@@ -227,24 +207,6 @@ export const DataComputeHomeComponent = () => {
                       >
                         进入沙箱
                       </Button>
-                      <Button
-                        disabled={!sandbox.usable}
-                        onClick={() => openMount(sandbox)}
-                      >
-                        数据挂载
-                      </Button>
-                      <Button
-                        onClick={() =>
-                          history.push(
-                            workspaceUrl('reports', {
-                              projectId: project.project_id,
-                              sandboxId: sandbox.id,
-                            }),
-                          )
-                        }
-                      >
-                        查看报告
-                      </Button>
                     </Space>
                   </Card>
                 </Col>
@@ -253,64 +215,6 @@ export const DataComputeHomeComponent = () => {
           </Card>
         ))
       )}
-      <Modal
-        title={`申请挂载数据：${mountSandbox?.name || ''}`}
-        open={!!mountSandbox}
-        onCancel={() => {
-          setMountSandbox(undefined);
-          setContext(undefined);
-        }}
-        onOk={() => form.submit()}
-      >
-        <Alert
-          showIcon
-          type="info"
-          message="仅可选择项目中的抽样脱敏数据；提交后须经全部项目参与节点同意。"
-          style={{ marginBottom: 16 }}
-        />
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={async (values) => {
-            try {
-              const result = responseData(
-                await DataComputeApi.requestMount({
-                  sandboxId: mountSandbox?.id,
-                  datasetAssetIds: values.assetIds,
-                  reason: values.reason,
-                }),
-                {},
-              );
-              message.success(`挂载申请已提交：${result.id}`);
-              form.resetFields();
-              setMountSandbox(undefined);
-              setContext(undefined);
-              refresh();
-            } catch (e: any) {
-              message.error(e.message || '提交挂载申请失败');
-            }
-          }}
-        >
-          <Form.Item
-            name="assetIds"
-            label="抽样脱敏数据"
-            rules={[{ required: true, message: '请选择数据' }]}
-          >
-            <Select
-              mode="multiple"
-              showSearch
-              optionFilterProp="label"
-              options={(context?.availableAssets || []).map((a: DataSandboxRecord) => ({
-                value: a.id,
-                label: `${a.name}（${a.provider_node_name || a.provider_node_id}）`,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="reason" label="申请说明">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
     </MvpPage>
   );
 };
@@ -384,11 +288,6 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
     .map((row: DataSandboxRecord) => ({ ...row, _kind: 'result' }));
   const columns = [
     {
-      title: '表名',
-      dataIndex: 'tableName',
-      render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
-    },
-    {
       title: '数据名称',
       dataIndex: 'name',
       render: (_: any, r: DataSandboxRecord) => r.name || r.assetId || '-',
@@ -396,7 +295,7 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
     {
       title: '类型',
       dataIndex: '_kind',
-      render: (v: string, r: DataSandboxRecord) => (
+      render: (v: string) => (
         <Tag color={v === 'mount' ? 'blue' : 'green'}>
           {v === 'mount' ? '初始挂载数据' : '计算结果'}
         </Tag>
@@ -410,11 +309,6 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
           {v === 'SYNCED' ? '跨节点同步' : '本节点'}
         </Tag>
       ),
-    },
-    {
-      title: '行数',
-      dataIndex: 'rowCount',
-      render: (v: number) => (v == null ? 0 : String(v)),
     },
     {
       title: '查看截止时间',
@@ -455,7 +349,7 @@ const WorkspaceDataCatalog = ({ sandboxId }: { sandboxId: string }) => {
   return (
     <MvpPage
       title="沙箱数据目录"
-      description="查看沙箱权威库 sandbox_data.db 中的挂载初始数据及计算任务产出的结果数据"
+      description=""
       extra={<RefreshButton loading={loading} onClick={refresh} />}
     >
       <Table
@@ -493,6 +387,17 @@ export const SandboxWorkspaceComponent = () => {
   if (!sandboxId) return <DataComputeHomeComponent />;
   if (error) return <Result status="error" title={error} />;
   if (!context) return <Card loading />;
+  if (context.sandbox?.status === 'EXPIRED')
+    return (
+      <Result
+        status="403"
+        title="沙箱已过期，无法进入"
+        subTitle="请返回沙箱列表续期或销毁该沙箱。"
+        extra={
+          <Button onClick={() => history.push(sandboxListUrl())}>返回沙箱列表</Button>
+        }
+      />
+    );
   const c = { sandboxId, projectId: projectId || context.project?.project_id };
   const menu = [
     { key: 'directory', icon: <TableOutlined />, label: '沙箱数据目录' },
@@ -535,8 +440,8 @@ export const SandboxWorkspaceComponent = () => {
           </Button>
           <strong>{context.sandbox?.name}</strong>
           <span>{context.project?.name || c.projectId}</span>
-          <Tag color={context.sandbox?.status === 'RUNNING' ? 'green' : 'default'}>
-            {context.sandbox?.status}
+          <Tag color={context.sandbox?.status === 'EXPIRED' ? 'error' : 'success'}>
+            {context.sandbox?.status === 'EXPIRED' ? '过期' : '正常'}
           </Tag>
           <Tag>CPU {context.sandbox?.cpu_cores}</Tag>
           <Tag>内存 {context.sandbox?.memory_gb}GB</Tag>

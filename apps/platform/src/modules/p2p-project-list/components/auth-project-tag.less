@@ -37,6 +37,10 @@
     margin-bottom: 8px;
     font-size: 12px;
 
+    .processRow {
+      width: 100%;
+    }
+
     .agree {
       color: rgb(0 104 250 / 100%);
       cursor: pointer;
@@ -69,6 +73,23 @@
     .reject {
       color: red;
       cursor: pointer;
+    }
+
+    .invitationActions {
+      min-width: 72px;
+      flex-shrink: 0;
+      margin-left: auto;
+      text-align: center;
+
+      .agree,
+      .reject,
+      :global(.ant-typography) {
+        width: 100%;
+        font-size: 12px;
+        line-height: 20px;
+        text-align: center;
+        white-space: nowrap;
+      }
     }
 
     .tagProcess {

@@ -1,5 +1,6 @@
 import {
   Button,
+  DatePicker,
   Form,
   Input,
   InputNumber,
@@ -12,6 +13,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import dayjs from 'dayjs';
 import { parse } from 'query-string';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'umi';
@@ -195,15 +197,25 @@ export const SandboxManagerComponent = () => {
         DataAssetApi.projectAssets(record.project_id),
         DataAssetApi.sandboxMounts(record.id),
       ]);
+      const projectAssets = responseData(projectData, []).filter(
+        (asset: DataSandboxRecord) => asset.data_stage === 'PROCESSED',
+      );
+      const mountedAssets = responseData(currentMounts, []).map(
+        (mount: DataSandboxRecord) => ({
+          ...mount,
+          id: mount.asset_id,
+          name: mount.asset_name,
+        }),
+      );
       setChangeAssets(
-        responseData(projectData, []).filter(
-          (asset: DataSandboxRecord) => asset.data_stage === 'PROCESSED',
+        Array.from(
+          new Map(
+            [...projectAssets, ...mountedAssets].map((asset) => [asset.id, asset]),
+          ).values(),
         ),
       );
       changeForm.setFieldsValue({
-        datasetAssetIds: responseData(currentMounts, []).map(
-          (mount: DataSandboxRecord) => mount.asset_id,
-        ),
+        datasetAssetIds: mountedAssets.map((asset) => asset.id),
       });
     }
   };
@@ -229,7 +241,9 @@ export const SandboxManagerComponent = () => {
   const openRenew = (record: DataSandboxRecord) => {
     setRenewItem(record);
     renewForm.resetFields();
-    renewForm.setFieldsValue({ days: 7 });
+    renewForm.setFieldsValue({
+      expiresAt: record.expires_at ? dayjs(record.expires_at) : undefined,
+    });
   };
 
   const submitRenew = async (values: DataSandboxRecord) => {
@@ -240,6 +254,7 @@ export const SandboxManagerComponent = () => {
           approvalType: 'RENEW',
           sandboxId: renewItem.id,
           ...values,
+          expiresAt: values.expiresAt.format('YYYY-MM-DDTHH:mm:ss'),
         }),
         {},
       );
@@ -271,7 +286,7 @@ export const SandboxManagerComponent = () => {
 
   const columns = [
     {
-      title: '沙箱',
+      title: '沙箱名称',
       dataIndex: 'name',
       render: (name: string, record: DataSandboxRecord) => (
         <Space direction="vertical" size={0}>
@@ -291,25 +306,7 @@ export const SandboxManagerComponent = () => {
       render: (_: unknown, record: DataSandboxRecord) =>
         `${record.cpu_cores}C / ${record.memory_gb}GB / GPU ${record.gpu_count} / ${record.storage_gb}GB`,
     },
-    {
-      title: '网络',
-      dataIndex: 'network_policy',
-      render: (value: string) => <Tag>{value}</Tag>,
-    },
     { title: '到期时间', dataIndex: 'expires_at', render: formatTime },
-    {
-      title: '端点',
-      dataIndex: 'endpoint',
-      width: 180,
-      render: (value: string) =>
-        value ? (
-          <Typography.Text copyable={{ text: value }} style={{ fontSize: 12 }}>
-            {value}
-          </Typography.Text>
-        ) : (
-          '-'
-        ),
-    },
     {
       title: '操作',
       width: 300,
@@ -317,32 +314,9 @@ export const SandboxManagerComponent = () => {
         <Space wrap>
           {(() => {
             const creator = record.created_by === loginService?.userInfo?.name;
+            const expired = record.status === 'EXPIRED';
             return (
               <>
-                {record.status === 'STOPPING' && (
-                  <Button disabled size="small" type="link">
-                    停止中
-                  </Button>
-                )}
-                {record.status === 'RUNNING' && (
-                  <Button
-                    disabled={!creator}
-                    size="small"
-                    type="link"
-                    onClick={() => action(record.id, 'STOP')}
-                  >
-                    停止
-                  </Button>
-                )}
-                {record.network_policy === 'ALLOW_LIST' ? (
-                  <Button
-                    size="small"
-                    type="link"
-                    onClick={() => openAllowlist(record.id)}
-                  >
-                    白名单
-                  </Button>
-                ) : null}
                 <Button
                   size="small"
                   type="link"
@@ -355,6 +329,7 @@ export const SandboxManagerComponent = () => {
                   disabled={!creator}
                   size="small"
                   type="link"
+                  hidden={expired}
                   onClick={() => openChange(record, 'SPEC_CHANGE')}
                 >
                   变更规格
@@ -363,6 +338,7 @@ export const SandboxManagerComponent = () => {
                   disabled={!creator}
                   size="small"
                   type="link"
+                  hidden={expired}
                   onClick={() => openChange(record, 'DATA_CHANGE')}
                 >
                   变更数据
@@ -370,6 +346,7 @@ export const SandboxManagerComponent = () => {
                 <Button
                   size="small"
                   type="link"
+                  hidden={expired}
                   onClick={async () => {
                     setMounts(
                       responseData(await DataAssetApi.sandboxMounts(record.id), []),
@@ -415,7 +392,6 @@ export const SandboxManagerComponent = () => {
           <Button
             type="primary"
             onClick={() => {
-              form.setFieldValue('ownerId', currentNodeId);
               setCreateOpen(true);
             }}
           >
@@ -443,9 +419,7 @@ export const SandboxManagerComponent = () => {
           form={form}
           layout="vertical"
           initialValues={{
-            ownerId: currentNodeId,
             validDays: 7,
-            networkPolicy: 'INTERNAL_ONLY',
             cpuCores: 2,
             memoryGb: 4,
             gpuCount: 0,
@@ -453,9 +427,19 @@ export const SandboxManagerComponent = () => {
           }}
           onFinish={async (values) => {
             try {
+              const defaultImage = images.find(
+                (item) => item.enabled && item.id !== 'img-secretflow',
+              );
+              if (!defaultImage) {
+                message.error('暂无可用的环境镜像，无法申请沙箱');
+                return;
+              }
               responseData(
                 await DataSandboxApi.approvalSubmit({
                   ...values,
+                  ownerId: currentNodeId,
+                  imageId: defaultImage.id,
+                  networkPolicy: 'INTERNAL_ONLY',
                   approvalType: 'CREATE',
                 }),
                 {},
@@ -514,19 +498,6 @@ export const SandboxManagerComponent = () => {
               }))}
             />
           </Form.Item>
-          <Form.Item name="ownerId" label="所属节点" rules={[{ required: true }]}>
-            <Input disabled />
-          </Form.Item>
-          <Form.Item name="imageId" label="环境镜像" rules={[{ required: true }]}>
-            <Select
-              options={images
-                .filter((item) => item.enabled && item.id !== 'img-secretflow')
-                .map((item) => ({
-                  value: item.id,
-                  label: `${item.name} (${item.image_ref})`,
-                }))}
-            />
-          </Form.Item>
           <Space size="large" wrap>
             <Form.Item name="cpuCores" label="CPU（核）">
               <InputNumber min={0.1} />
@@ -544,15 +515,6 @@ export const SandboxManagerComponent = () => {
               <InputNumber min={1} max={365} />
             </Form.Item>
           </Space>
-          <Form.Item name="networkPolicy" label="网络策略">
-            <Select
-              options={[
-                { value: 'INTERNAL_ONLY', label: '仅平台内网' },
-                { value: 'ALLOW_LIST', label: '出口白名单' },
-                { value: 'NO_NETWORK', label: '完全断网' },
-              ]}
-            />
-          </Form.Item>
         </Form>
       </Modal>
 
@@ -569,23 +531,19 @@ export const SandboxManagerComponent = () => {
             {formatTime(renewItem?.expires_at)}
           </Form.Item>
           <Form.Item
-            name="days"
-            label="续期天数"
-            rules={[
-              { required: true, message: '请输入续期天数' },
-              {
-                type: 'integer',
-                min: 1,
-                max: 365,
-                message: '续期天数必须是 1-365 的整数',
-              },
-            ]}
+            name="expiresAt"
+            label="新的到期时间"
+            rules={[{ required: true, message: '请选择新的到期时间' }]}
           >
-            <InputNumber
-              min={1}
-              max={365}
-              precision={0}
-              addonAfter="天"
+            <DatePicker
+              showTime
+              showSecond
+              format="YYYY-MM-DD HH:mm:ss"
+              disabledDate={(current) =>
+                current
+                  .endOf('day')
+                  .isBefore(dayjs(renewItem?.expires_at || undefined).startOf('day'))
+              }
               style={{ width: '100%' }}
             />
           </Form.Item>
@@ -602,7 +560,7 @@ export const SandboxManagerComponent = () => {
             />
           </Form.Item>
           <Typography.Text type="secondary">
-            审批通过后，将按执行时间加上所选天数重新计算到期时间。
+            审批通过后，到期时间将设置为上述固定时间点。
           </Typography.Text>
         </Form>
       </Modal>
