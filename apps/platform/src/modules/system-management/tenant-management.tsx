@@ -52,9 +52,14 @@ export const TenantManagementComponent = () => {
   const activeCount = state.tenants.filter(
     (tenant) => tenant.status === 'ACTIVE',
   ).length;
-  const totalSandboxQuota = state.tenants.reduce(
-    (total, tenant) => total + tenant.sandboxQuota,
-    0,
+  const quotaTotals = state.tenants.reduce(
+    (totals, tenant) => ({
+      cpuCores: totals.cpuCores + tenant.cpuCores,
+      memoryGb: totals.memoryGb + tenant.memoryGb,
+      gpuCount: totals.gpuCount + tenant.gpuCount,
+      storageGb: totals.storageGb + tenant.storageGb,
+    }),
+    { cpuCores: 0, memoryGb: 0, gpuCount: 0, storageGb: 0 },
   );
 
   const openCreate = () => {
@@ -62,9 +67,10 @@ export const TenantManagementComponent = () => {
     form.resetFields();
     form.setFieldsValue({
       status: 'ACTIVE',
-      projectQuota: 5,
-      sandboxQuota: 10,
-      storageGb: 200,
+      cpuCores: 16,
+      memoryGb: 64,
+      gpuCount: 0,
+      storageGb: 1024,
       dataIsolation: true,
       computeIsolation: true,
     } as SandboxTenant);
@@ -144,32 +150,42 @@ export const TenantManagementComponent = () => {
   return (
     <MvpPage
       title="租户管理"
-      description="管理沙箱租户的节点归属、项目与沙箱配额以及数据计算隔离策略"
+      description="管理沙箱租户的节点归属、硬件资源配额以及数据计算隔离策略"
       extra={
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           新增租户
         </Button>
       }
     >
-      <Row gutter={16} className={styles.stats}>
-        <Col span={6}>
+      <Row gutter={[16, 16]} className={styles.stats}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
           <Card className={styles.statCard}>
             <Statistic title="租户总数" value={state.tenants.length} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
           <Card className={styles.statCard}>
             <Statistic title="正常租户" value={activeCount} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
           <Card className={styles.statCard}>
-            <Statistic title="冻结租户" value={state.tenants.length - activeCount} />
+            <Statistic title="CPU 配额" value={quotaTotals.cpuCores} suffix="核" />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
           <Card className={styles.statCard}>
-            <Statistic title="沙箱配额总量" value={totalSandboxQuota} />
+            <Statistic title="内存配额" value={quotaTotals.memoryGb} suffix="GB" />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card className={styles.statCard}>
+            <Statistic title="GPU 配额" value={quotaTotals.gpuCount} suffix="卡" />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card className={styles.statCard}>
+            <Statistic title="存储配额" value={quotaTotals.storageGb} suffix="GB" />
           </Card>
         </Col>
       </Row>
@@ -201,7 +217,7 @@ export const TenantManagementComponent = () => {
           pageSize: 10,
           showTotal: (total) => '共 ' + total + ' 条',
         }}
-        scroll={{ x: 1250 }}
+        scroll={{ x: 1340 }}
         columns={[
           {
             title: '租户',
@@ -229,12 +245,18 @@ export const TenantManagementComponent = () => {
           {
             title: '资源配额',
             key: 'quota',
-            width: 190,
+            width: 240,
             render: (_: unknown, row: SandboxTenant) => (
-              <span className={styles.quota}>
-                项目 {row.projectQuota} · 沙箱 {row.sandboxQuota} · 存储 {row.storageGb}{' '}
-                GB
-              </span>
+              <div className={styles.quota}>
+                <div className={styles.quotaLine}>
+                  <span className={styles.quotaItem}>CPU {row.cpuCores} 核</span>
+                  <span className={styles.quotaItem}>内存 {row.memoryGb} GB</span>
+                </div>
+                <div className={styles.quotaLine}>
+                  <span className={styles.quotaItem}>GPU {row.gpuCount} 卡</span>
+                  <span className={styles.quotaItem}>存储 {row.storageGb} GB</span>
+                </div>
+              </div>
             ),
           },
           {
@@ -344,29 +366,45 @@ export const TenantManagementComponent = () => {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
-                name="projectQuota"
-                label="项目配额"
-                rules={[{ required: true }]}
+                name="cpuCores"
+                label="CPU 配额（核）"
+                rules={[{ required: true, message: '请输入 CPU 配额' }]}
+              >
+                <InputNumber
+                  min={0.1}
+                  step={0.5}
+                  precision={1}
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="memoryGb"
+                label="内存配额（GB）"
+                rules={[{ required: true, message: '请输入内存配额' }]}
               >
                 <InputNumber min={1} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
               <Form.Item
-                name="sandboxQuota"
-                label="沙箱配额"
-                rules={[{ required: true }]}
+                name="gpuCount"
+                label="GPU 配额（卡）"
+                rules={[{ required: true, message: '请输入 GPU 配额' }]}
               >
-                <InputNumber min={1} precision={0} style={{ width: '100%' }} />
+                <InputNumber min={0} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
                 name="storageGb"
-                label="存储配额（GB）"
-                rules={[{ required: true }]}
+                label="存储容量（GB）"
+                rules={[{ required: true, message: '请输入存储容量' }]}
               >
                 <InputNumber min={1} precision={0} style={{ width: '100%' }} />
               </Form.Item>

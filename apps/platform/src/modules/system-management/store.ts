@@ -31,8 +31,9 @@ export type SandboxTenant = {
   contact: string;
   phone: string;
   status: TenantStatus;
-  projectQuota: number;
-  sandboxQuota: number;
+  cpuCores: number;
+  memoryGb: number;
+  gpuCount: number;
   storageGb: number;
   dataIsolation: boolean;
   computeIsolation: boolean;
@@ -119,8 +120,9 @@ const DEFAULT_STATE: SystemManagementState = {
       contact: '平台管理员',
       phone: '13800000000',
       status: 'ACTIVE',
-      projectQuota: 20,
-      sandboxQuota: 40,
+      cpuCores: 32,
+      memoryGb: 128,
+      gpuCount: 2,
       storageGb: 2000,
       dataIsolation: true,
       computeIsolation: true,
@@ -134,8 +136,9 @@ const DEFAULT_STATE: SystemManagementState = {
       contact: '项目负责人',
       phone: '13900000000',
       status: 'ACTIVE',
-      projectQuota: 8,
-      sandboxQuota: 16,
+      cpuCores: 16,
+      memoryGb: 64,
+      gpuCount: 0,
       storageGb: 500,
       dataIsolation: true,
       computeIsolation: true,
@@ -229,6 +232,29 @@ const DEFAULT_STATE: SystemManagementState = {
 
 const STORAGE_KEY = 'data-sandbox-system-management-v1';
 
+type StoredSandboxTenant = Partial<SandboxTenant> & {
+  projectQuota?: number;
+  sandboxQuota?: number;
+};
+
+const isValidQuota = (value: unknown, allowZero = false): value is number =>
+  typeof value === 'number' &&
+  Number.isFinite(value) &&
+  (allowZero ? value >= 0 : value > 0);
+
+const normalizeTenant = (tenant: StoredSandboxTenant): SandboxTenant => {
+  const normalized = { ...tenant };
+  delete normalized.projectQuota;
+  delete normalized.sandboxQuota;
+  return {
+    ...normalized,
+    cpuCores: isValidQuota(tenant.cpuCores) ? tenant.cpuCores : 16,
+    memoryGb: isValidQuota(tenant.memoryGb) ? tenant.memoryGb : 64,
+    gpuCount: isValidQuota(tenant.gpuCount, true) ? tenant.gpuCount : 0,
+    storageGb: isValidQuota(tenant.storageGb) ? tenant.storageGb : 1024,
+  } as SandboxTenant;
+};
+
 const cloneDefaultState = (): SystemManagementState =>
   JSON.parse(JSON.stringify(DEFAULT_STATE)) as SystemManagementState;
 
@@ -236,7 +262,12 @@ const loadState = (): SystemManagementState => {
   if (typeof window === 'undefined') return cloneDefaultState();
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    return stored ? (JSON.parse(stored) as SystemManagementState) : cloneDefaultState();
+    if (!stored) return cloneDefaultState();
+    const state = JSON.parse(stored) as SystemManagementState;
+    return {
+      ...state,
+      tenants: (state.tenants || []).map((tenant) => normalizeTenant(tenant)),
+    };
   } catch {
     return cloneDefaultState();
   }
