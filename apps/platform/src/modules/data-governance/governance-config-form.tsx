@@ -21,6 +21,7 @@ export const samplingMethods = [
   { value: 'SYSTEMATIC', label: '等距抽样' },
   { value: 'STRATIFIED', label: '分层抽样' },
   { value: 'CLUSTER', label: '整群抽样' },
+  { value: 'CUSTOM', label: '自定义方法' },
 ];
 
 const maskingMethods = [
@@ -324,6 +325,21 @@ export const GovernanceConfigFields = ({
           <Form.Item name="samplingMethod" label="抽样方法">
             <Select allowClear options={samplingMethods} placeholder="不抽样则留空" />
           </Form.Item>
+          {method === 'CUSTOM' && (
+            <Form.Item
+              name="samplingScript"
+              label="自定义抽样代码"
+              rules={[{ required: true, message: '请输入自定义抽样代码' }]}
+              tooltip="Python 脚本，参数：--input 输入 CSV、--output 输出 CSV、--params 参数 JSON；抽样结果写入 --output"
+            >
+              <Input.TextArea
+                rows={10}
+                placeholder={
+                  'import argparse, csv\nap = argparse.ArgumentParser()\nap.add_argument("--input"); ap.add_argument("--output"); ap.add_argument("--params")\na = ap.parse_args()\n...'
+                }
+              />
+            </Form.Item>
+          )}
           {method === 'RANDOM' && (
             <Row gutter={12}>
               <Col span={8}>
@@ -438,7 +454,8 @@ export const GovernanceConfigFields = ({
         </>
       )}
 
-      {enableMasking && (
+      {/* 自定义抽样由脚本自行处理输出，内置脱敏规则不参与执行，故不展示 */}
+      {enableMasking && method !== 'CUSTOM' && (
         <Form.List name="maskingRows">
           {(fields, { add, remove }) => (
             <>
@@ -517,7 +534,10 @@ export const GovernanceConfigFields = ({
                         initialValue="NONE"
                         noStyle
                       >
-                        <Select options={maskingMethods} />
+                        <Select
+                          options={maskingMethods}
+                          popupMatchSelectWidth={false}
+                        />
                       </Form.Item>
                     ),
                   },

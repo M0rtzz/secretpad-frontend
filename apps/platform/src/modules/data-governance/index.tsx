@@ -19,7 +19,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
 import { DataGovernanceApi, DataAssetApi, responseData } from '@/services/data-sandbox';
 import type { DataSandboxRecord } from '@/services/data-sandbox';
-import { listP2PProject } from '@/services/secretpad/P2PProjectController';
 
 import {
   GovernanceConfigFields,
@@ -52,26 +51,23 @@ const statusColors: Record<string, string> = {
 
 const CANCELLABLE = ['PENDING', 'RUNNING'];
 
+/** 任务列表筛选项，仅暴露执行中与终态两类结果。 */
+const FILTERABLE_STATUS = ['RUNNING', 'SUCCEEDED', 'FAILED'];
+
 export const DataGovernanceComponent = () => {
   /* --------------------------------- 任务 --------------------------------- */
   const [tasks, setTasks] = useState<DataSandboxRecord[]>([]);
   const [taskLoading, setTaskLoading] = useState(false);
   const [taskStatus, setTaskStatus] = useState('');
-  const [taskExecMode, setTaskExecMode] = useState('');
   const [taskKeyword, setTaskKeyword] = useState('');
   const [taskOpen, setTaskOpen] = useState(false);
   const [taskForm] = Form.useForm();
-  const taskMode = Form.useWatch('execMode', taskForm);
   const [preview, setPreview] = useState<DataSandboxRecord>();
   const [sourceAssets, setSourceAssets] = useState<DataSandboxRecord[]>([]);
 
   /* ------------------------------- 详情 / 结果 ------------------------------- */
   const [detailItem, setDetailItem] = useState<DataSandboxRecord>();
   const [detailOpen, setDetailOpen] = useState(false);
-  const [results, setResults] = useState<DataSandboxRecord[]>([]);
-  const [resultsOpen, setResultsOpen] = useState(false);
-  const [mountTask, setMountTask] = useState<DataSandboxRecord>();
-  const [projects, setProjects] = useState<DataSandboxRecord[]>([]);
   /* 结果数据展示（仅脱敏后结果可查看；表头携带数据源） */
   const [viewItem, setViewItem] = useState<DataSandboxRecord>();
   const [viewOpen, setViewOpen] = useState(false);
@@ -84,7 +80,6 @@ export const DataGovernanceComponent = () => {
         responseData(
           await DataGovernanceApi.tasks({
             status: taskStatus,
-            execMode: taskExecMode,
             keyword: taskKeyword,
           }),
           [],
@@ -95,7 +90,7 @@ export const DataGovernanceComponent = () => {
     } finally {
       setTaskLoading(false);
     }
-  }, [taskStatus, taskExecMode, taskKeyword]);
+  }, [taskStatus, taskKeyword]);
 
   useEffect(() => {
     refreshTasks();
@@ -111,13 +106,6 @@ export const DataGovernanceComponent = () => {
       ),
     );
   }, []);
-
-  useEffect(() => {
-    if (resultsOpen) {
-      DataGovernanceApi.results().then((res) => setResults(responseData(res, [])));
-      listP2PProject().then((res) => setProjects(responseData(res, [])));
-    }
-  }, [resultsOpen]);
 
   const openTaskSubmit = () => {
     taskForm.resetFields();
@@ -169,11 +157,16 @@ export const DataGovernanceComponent = () => {
     delete payload.clusterColumn;
     delete payload.blockSize;
     delete payload.maskingRows;
-    if ((payload.execMode || 'BUILTIN') === 'CUSTOM') {
+    delete payload.samplingScript;
+    // 自定义抽样方法由自定义代码执行组件运行，不再下发内置抽样与脱敏参数
+    if (values.samplingMethod === 'CUSTOM') {
+      payload.execMode = 'CUSTOM';
+      payload.script = values.samplingScript;
       delete payload.sampling;
       delete payload.masking;
       return payload;
     }
+    payload.execMode = 'BUILTIN';
     // 抽样：结构化表单 → {method,...params}
     if (values.samplingMethod) {
       payload.sampling = {
@@ -245,23 +238,6 @@ export const DataGovernanceComponent = () => {
     }
   };
 
-  const mountResult = async () => {
-    if (!mountTask) return;
-    try {
-      responseData(
-        await DataGovernanceApi.mountResult({
-          taskId: mountTask.id,
-          projectId: mountTask.mountProjectId,
-        }),
-        {},
-      );
-      message.success('结果已挂载到项目');
-      setMountTask(undefined);
-    } catch (error: any) {
-      message.error(error.message || '挂载失败');
-    }
-  };
-
   return (
     <MvpPage
       title="数据抽样与脱敏"
@@ -289,21 +265,9 @@ export const DataGovernanceComponent = () => {
                     style={{ width: 130 }}
                     options={[
                       { value: '', label: '全部状态' },
-                      ...Object.entries(statusLabels).map(([value, label]) => ({
+                      ...FILTERABLE_STATUS.map((value) => ({
                         value,
-                        label,
-                      })),
-                    ]}
-                  />
-                  <Select
-                    value={taskExecMode}
-                    onChange={setTaskExecMode}
-                    style={{ width: 140 }}
-                    options={[
-                      { value: '', label: '全部模式' },
-                      ...Object.entries(execModeLabels).map(([value, label]) => ({
-                        value,
-                        label,
+                        label: statusLabels[value],
                       })),
                     ]}
                   />
@@ -316,7 +280,6 @@ export const DataGovernanceComponent = () => {
                   <Button type="primary" onClick={openTaskSubmit}>
                     提交任务
                   </Button>
-                  <Button onClick={() => setResultsOpen(true)}>结果数据集</Button>
                 </Space>
                 <Table
                   rowKey="id"
@@ -332,15 +295,6 @@ export const DataGovernanceComponent = () => {
                           <strong>{row.name || v}</strong>
                           <span style={{ color: '#888' }}>{v}</span>
                         </Space>
-                      ),
-                    },
-                    {
-                      title: '模式',
-                      dataIndex: 'exec_mode',
-                      render: (v: string) => (
-                        <Tag color={v === 'CUSTOM' ? 'purple' : 'blue'}>
-                          {execModeLabels[v] || v}
-                        </Tag>
                       ),
                     },
                     {
@@ -418,14 +372,6 @@ export const DataGovernanceComponent = () => {
           initialValues={{ limit: 5 }}
           onFinish={submitTask}
         >
-          <Form.Item name="execMode" label="执行模式" rules={[{ required: true }]}>
-            <Select
-              options={Object.entries(execModeLabels).map(([value, label]) => ({
-                value,
-                label,
-              }))}
-            />
-          </Form.Item>
           <Alert
             type="info"
             showIcon
@@ -504,32 +450,10 @@ export const DataGovernanceComponent = () => {
               />
             </div>
           )}
-          {(!taskMode || taskMode === 'BUILTIN') && (
-            <GovernanceConfigFields
-              form={taskForm}
-              columns={governanceColumnsFromPreview(preview)}
-            />
-          )}
-          {taskMode === 'CUSTOM' && (
-            <>
-              <Form.Item
-                name="script"
-                label="Python 脚本"
-                rules={[{ required: true }]}
-                tooltip="参数：--input 输入 CSV、--output 输出 CSV、--params 参数 JSON；写结果到 --output"
-              >
-                <Input.TextArea
-                  rows={10}
-                  placeholder={
-                    'import argparse, csv\nap = argparse.ArgumentParser()\nap.add_argument("--input"); ap.add_argument("--output"); ap.add_argument("--params")\na = ap.parse_args()\n...'
-                  }
-                />
-              </Form.Item>
-              <Form.Item name="params" label="脚本参数 (JSON)">
-                <Input.TextArea rows={2} placeholder='{"seed":1}' />
-              </Form.Item>
-            </>
-          )}
+          <GovernanceConfigFields
+            form={taskForm}
+            columns={governanceColumnsFromPreview(preview)}
+          />
         </Form>
       </Modal>
 
@@ -587,54 +511,6 @@ export const DataGovernanceComponent = () => {
           </Space>
         )}
       </Drawer>
-
-      {/* 结果数据集 */}
-      <Modal
-        title="结果数据集"
-        open={resultsOpen}
-        width={860}
-        footer={null}
-        onCancel={() => setResultsOpen(false)}
-      >
-        <Table
-          rowKey="id"
-          size="small"
-          dataSource={results}
-          pagination={false}
-          scroll={{ y: 360 }}
-          columns={[
-            {
-              title: '任务',
-              dataIndex: 'id',
-              render: (v: string, row: DataSandboxRecord) => row.name || v,
-            },
-            {
-              title: '结果表',
-              render: (_: unknown, row: DataSandboxRecord) =>
-                `${row.result_node_id}/${row.result_datatable_id}`,
-            },
-            { title: '行数', dataIndex: 'result_rows' },
-            { title: '完成时间', dataIndex: 'finished_at', render: formatTime },
-            {
-              title: '操作',
-              width: 160,
-              render: (_: unknown, row: DataSandboxRecord) => (
-                <Space wrap>
-                  <Button type="link" onClick={() => openResultView(row)}>
-                    查看
-                  </Button>
-                  <Button
-                    type="link"
-                    onClick={() => setMountTask({ ...row, mountProjectId: '' })}
-                  >
-                    挂载项目
-                  </Button>
-                </Space>
-              ),
-            },
-          ]}
-        />
-      </Modal>
 
       {/* 结果数据展示（仅脱敏后结果可查看；表头携带数据源） */}
       <Drawer
@@ -714,29 +590,6 @@ export const DataGovernanceComponent = () => {
           </>
         )}
       </Drawer>
-
-      {/* 挂载项目 */}
-      <Modal
-        title={`挂载结果到项目：${mountTask?.id || ''}`}
-        open={!!mountTask}
-        onCancel={() => setMountTask(undefined)}
-        onOk={mountResult}
-      >
-        <Select
-          showSearch
-          optionFilterProp="label"
-          style={{ width: '100%' }}
-          placeholder="选择项目"
-          value={mountTask?.mountProjectId}
-          onChange={(v) =>
-            setMountTask((prev) => (prev ? { ...prev, mountProjectId: v } : prev))
-          }
-          options={projects.map((p) => ({
-            value: p.projectId,
-            label: `${p.projectName} (${p.projectId})`,
-          }))}
-        />
-      </Modal>
     </MvpPage>
   );
 };

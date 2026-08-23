@@ -1,5 +1,6 @@
 import {
   Button,
+  DatePicker,
   Form,
   Input,
   message,
@@ -9,12 +10,13 @@ import {
   Space,
   Table,
   Tag,
-  Tooltip,
   Upload,
   Segmented,
   Tabs,
 } from 'antd';
 import { UploadOutlined, ApiOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 
 import { MvpPage, RefreshButton, formatTime } from '@/modules/data-sandbox-mvp/common';
@@ -40,6 +42,11 @@ export const DataCatalogComponent = () => {
   const [selectedDatabaseTables, setSelectedDatabaseTables] = useState<string[]>([]);
   const [fileName, setFileName] = useState('');
   const [addLoading, setAddLoading] = useState(false);
+  const [validityEdit, setValidityEdit] = useState<{
+    row: DataSandboxRecord;
+    field: 'accessEnd' | 'validUntil';
+  }>();
+  const [validityForm] = Form.useForm();
 
   const jdbcUrlFor = (type: string) => {
     switch (type) {
@@ -207,6 +214,61 @@ export const DataCatalogComponent = () => {
     }
   };
 
+  /** 外部机构共享的表格数据仅同步字段格式，预览时不展示具体数据。 */
+  const openPreview = async (row: DataSandboxRecord) => {
+    if (row.owned === false && row.modality !== 'IMAGE') {
+      setPreview({
+        asset: row,
+        columns: row.schema_columns || [],
+        rows: [],
+        sharedMetadataOnly: true,
+      });
+      return;
+    }
+    setPreview(responseData(await DataAssetApi.preview(row.id, 10), {}));
+  };
+
+  const validityLabel =
+    validityEdit?.field === 'accessEnd' ? '访问截止时间' : '使用截止时间';
+
+  const openValidityEdit = (
+    row: DataSandboxRecord,
+    field: 'accessEnd' | 'validUntil',
+  ) => {
+    const current = field === 'accessEnd' ? row.access_end : row.control_valid_until;
+    setValidityEdit({ row, field });
+    validityForm.setFieldsValue({ deadline: current ? dayjs(current) : undefined });
+  };
+
+  /** 使用控制为整体覆盖写入，更改单个时间时需回填其余字段，避免被清空。 */
+  const submitValidity = async ({ deadline }: { deadline?: Dayjs }) => {
+    if (!validityEdit) return;
+    const { row, field } = validityEdit;
+    const next = deadline ? deadline.toISOString() : '';
+    try {
+      const result = responseData(
+        await DataAssetApi.saveUsageControl({
+          assetId: row.id,
+          validFrom: row.control_valid_from || '',
+          validUntil: field === 'validUntil' ? next : row.control_valid_until || '',
+          allowExport: !!row.allow_export,
+          accessStart: row.access_start || '',
+          accessEnd: field === 'accessEnd' ? next : row.access_end || '',
+        }),
+        {},
+      );
+      message.success(
+        result.status === 'PENDING'
+          ? '本节点非数据提供方，已提交有效期变更申请'
+          : '有效期已更新',
+      );
+      setValidityEdit(undefined);
+      refresh();
+    } catch (error: any) {
+      message.error(error.message || '有效期更新失败');
+    }
+  };
+
   const importDatabase = async () => {
     try {
       const values = await databaseForm.validateFields();
@@ -277,19 +339,9 @@ export const DataCatalogComponent = () => {
         rowKey="id"
         loading={loading}
         dataSource={items}
-        scroll={{ x: 1800 }}
+        scroll={{ x: 1240 }}
         columns={[
           { title: '数据名称', dataIndex: 'name', fixed: 'left', width: 180 },
-          {
-            title: '元数据信息',
-            dataIndex: 'metadata_json',
-            width: 220,
-            render: (v: string) => (
-              <Tooltip title={<pre>{v}</pre>}>
-                <span>{v || '-'}</span>
-              </Tooltip>
-            ),
-          },
           {
             title: '数据提供方',
             dataIndex: 'provider_node_name',
@@ -303,12 +355,6 @@ export const DataCatalogComponent = () => {
             render: formatTime,
           },
           {
-            title: '有效期',
-            dataIndex: 'valid_until',
-            width: 180,
-            render: (v: string) => (v ? formatTime(v) : '长期有效'),
-          },
-          {
             title: '数据类型',
             dataIndex: 'data_stage',
             width: 150,
@@ -317,24 +363,6 @@ export const DataCatalogComponent = () => {
                 {v === 'RAW' ? '源数据' : '抽样脱敏后数据'}
               </Tag>
             ),
-          },
-          {
-            title: '抽样方法',
-            dataIndex: 'sampling_method',
-            width: 130,
-            render: (v: string) => v || '-',
-          },
-          {
-            title: '脱敏方法',
-            dataIndex: 'masking_json',
-            width: 200,
-            render: (v: string) => v || '-',
-          },
-          {
-            title: '源表/源数据',
-            dataIndex: 'source_asset_id',
-            width: 160,
-            render: (v: string, row: DataSandboxRecord) => v || row.datatable_id || '-',
           },
           {
             title: '挂载项目',
@@ -350,24 +378,40 @@ export const DataCatalogComponent = () => {
               ),
           },
           {
-            title: '数据归属',
-            dataIndex: 'owned',
-            width: 130,
-            render: (owned: boolean) => (
-              <Tag color={owned ? 'green' : 'default'}>
-                {owned ? '本地数据' : '外部共享'}
-              </Tag>
+            title: '有效期',
+            width: 290,
+            render: (_: unknown, row: DataSandboxRecord) => (
+              <Space direction="vertical" size={0}>
+                <Space size={4}>
+                  <span>
+                    访问截止时间：
+                    {row.access_end ? formatTime(row.access_end) : '未设置'}
+                  </span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => openValidityEdit(row, 'accessEnd')}
+                  >
+                    更改
+                  </Button>
+                </Space>
+                <Space size={4}>
+                  <span>
+                    使用截止时间：
+                    {row.control_valid_until
+                      ? formatTime(row.control_valid_until)
+                      : '未设置'}
+                  </span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => openValidityEdit(row, 'validUntil')}
+                  >
+                    更改
+                  </Button>
+                </Space>
+              </Space>
             ),
-          },
-          {
-            title: '使用控制',
-            width: 210,
-            render: (_: unknown, row: DataSandboxRecord) =>
-              row.control_valid_until
-                ? `有效至 ${row.control_valid_until}，导出：${
-                    row.allow_export ? '允许' : '禁止'
-                  }`
-                : '未设置',
           },
           {
             title: '操作',
@@ -375,12 +419,7 @@ export const DataCatalogComponent = () => {
             width: 170,
             render: (_: unknown, row: DataSandboxRecord) => (
               <Space>
-                <Button
-                  type="link"
-                  onClick={async () =>
-                    setPreview(responseData(await DataAssetApi.preview(row.id, 10), {}))
-                  }
-                >
+                <Button type="link" onClick={() => openPreview(row)}>
                   预览
                 </Button>
                 {row.owned && (
@@ -622,7 +661,7 @@ export const DataCatalogComponent = () => {
         footer={null}
         onCancel={() => setPreview(undefined)}
       >
-        <DataAssetPreviewTable preview={preview} />
+        <DataAssetPreviewTable preview={preview} emptyText="数据不可见" />
       </Modal>
       <Modal
         title={`挂载项目 - ${projectAsset?.name || ''}`}
@@ -639,6 +678,19 @@ export const DataCatalogComponent = () => {
             { title: '项目 ID', dataIndex: 'project_id' },
           ]}
         />
+      </Modal>
+      <Modal
+        title={`更改${validityLabel}`}
+        open={!!validityEdit}
+        onCancel={() => setValidityEdit(undefined)}
+        onOk={() => validityForm.submit()}
+        okText="保存"
+      >
+        <Form form={validityForm} layout="vertical" onFinish={submitValidity}>
+          <Form.Item name="deadline" label={validityLabel} extra="留空表示不限制">
+            <DatePicker showTime showSecond format="YYYY-MM-DD HH:mm:ss" allowClear />
+          </Form.Item>
+        </Form>
       </Modal>
     </MvpPage>
   );
