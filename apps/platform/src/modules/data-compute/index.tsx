@@ -25,7 +25,6 @@ import {
 } from 'antd';
 import {
   ArrowLeftOutlined,
-  AppstoreOutlined,
   CodeOutlined,
   FundOutlined,
   PartitionOutlined,
@@ -385,7 +384,6 @@ export const SandboxWorkspaceComponent = () => {
     { key: 'directory', icon: <TableOutlined />, label: '沙箱数据目录' },
     { key: 'dev', icon: <CodeOutlined />, label: '沙箱方式开发' },
     { key: 'algorithm', icon: <FundOutlined />, label: '自定义算法' },
-    { key: 'components', icon: <AppstoreOutlined />, label: '建模组件' },
     { key: 'visual', icon: <PartitionOutlined />, label: '可视化建模' },
   ];
   const page =
@@ -393,8 +391,6 @@ export const SandboxWorkspaceComponent = () => {
       <SandboxDevelopmentComponent />
     ) : workspace === 'algorithm' ? (
       <CustomAlgorithmComponent />
-    ) : workspace === 'components' ? (
-      <ModelingComponentsComponent />
     ) : workspace === 'visual' ? (
       <VisualModelingComponent />
     ) : (
@@ -452,53 +448,6 @@ export const CustomAlgorithmComponent = () => (
     {(ctx) => <ModelCenterComponent context={ctx} />}
   </ComputeContext>
 );
-
-export const ModelingComponentsComponent = () => (
-  <ComputeContext>
-    {(context) => <ComponentCatalog sandboxId={context.sandbox.id} />}
-  </ComputeContext>
-);
-const ComponentCatalog = ({ sandboxId }: { sandboxId: string }) => {
-  const [rows, setRows] = useState<DataSandboxRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      setRows(responseData(await DataComputeApi.components(sandboxId), []));
-    } finally {
-      setLoading(false);
-    }
-  }, [sandboxId]);
-  useEffect(() => void refresh(), [refresh]);
-  return (
-    <MvpPage
-      title="沙箱智能建模：建模组件"
-      extra={<RefreshButton loading={loading} onClick={refresh} />}
-    >
-      <Table
-        rowKey={(r) => r.id || r.code}
-        dataSource={rows}
-        loading={loading}
-        columns={[
-          { title: '组件', dataIndex: 'name' },
-          { title: '分类', dataIndex: 'category' },
-          {
-            title: '来源',
-            dataIndex: 'source',
-            render: (v) => (
-              <Tag color={v === 'CUSTOM' ? 'purple' : 'blue'}>
-                {v === 'CUSTOM' ? '自定义算法' : '系统内置'}
-              </Tag>
-            ),
-          },
-          { title: '运行时', dataIndex: 'runtime_app' },
-          { title: '版本', dataIndex: 'version' },
-          { title: '说明', dataIndex: 'description' },
-        ]}
-      />
-    </MvpPage>
-  );
-};
 
 export const VisualModelingComponent = () => (
   <ComputeContext requireUse>
