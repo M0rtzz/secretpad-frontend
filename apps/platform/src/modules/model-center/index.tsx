@@ -22,6 +22,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
 import { DataDevApi, DataModelApi, responseData } from '@/services/data-sandbox';
 import type { DataSandboxRecord } from '@/services/data-sandbox';
+import {
+  SystemUserManagementApi,
+  type ManagedUserOption,
+} from '@/services/system-user-management';
 
 /** 受控 API 调用端点（与后端 ModelApiController 一致）。 */
 const INVOKE_ENDPOINT = '/api/v1alpha1/model-api/invoke';
@@ -132,6 +136,10 @@ export const ModelCenterComponent = ({
   const [debugInput, setDebugInput] = useState('[\n  {"age": 28, "balance": 45000}\n]');
   const [debugResult, setDebugResult] = useState<DataSandboxRecord>();
   const [debugLoading, setDebugLoading] = useState(false);
+  const [authorizedUserOptions, setAuthorizedUserOptions] = useState<
+    ManagedUserOption[]
+  >([]);
+  const [authorizedUsersLoading, setAuthorizedUsersLoading] = useState(false);
 
   const refreshApis = useCallback(async () => {
     setApisLoading(true);
@@ -144,9 +152,25 @@ export const ModelCenterComponent = ({
     }
   }, []);
 
+  const refreshAuthorizedUserOptions = useCallback(async () => {
+    setAuthorizedUsersLoading(true);
+    try {
+      setAuthorizedUserOptions(await SystemUserManagementApi.authorizationOptions());
+    } catch (error: any) {
+      message.error(error.message || '加载授权用户失败');
+    } finally {
+      setAuthorizedUsersLoading(false);
+    }
+  }, []);
   useEffect(() => {
     refreshApis();
   }, [refreshApis]);
+
+  useEffect(() => {
+    if (publishOpen || detailOpen) {
+      refreshAuthorizedUserOptions();
+    }
+  }, [publishOpen, detailOpen, refreshAuthorizedUserOptions]);
 
   /* ------------------------------- 发布来源加载 ------------------------------- */
   const loadPublishSources = useCallback(async () => {
@@ -257,6 +281,16 @@ export const ModelCenterComponent = ({
       setPublishOpen(false);
       refreshApis();
       setDetailItem(api);
+      updateForm.setFieldsValue({
+        authorizedUsers: Array.isArray(api.authorized_users)
+          ? api.authorized_users
+          : values.authUsers || [],
+        ipWhitelist: Array.isArray(api.ip_whitelist)
+          ? api.ip_whitelist
+          : values.ipWhitelist || [],
+        validRange: range || null,
+        description: api.description || values.description || '',
+      });
       setDetailOpen(true);
     } catch (error: any) {
       message.error(error.message || '发布失败');
@@ -493,6 +527,13 @@ export const ModelCenterComponent = ({
   const item = detailItem;
   const debugRows = (debugResult?.rows || []) as string[][];
   const debugHeader = (debugResult?.header || []) as string[];
+  const authorizedUserSelectOptions = authorizedUserOptions.map((user) => ({
+    value: user.account,
+    label:
+      user.displayName === user.account
+        ? user.account
+        : `${user.displayName}（${user.account}）`,
+  }));
 
   return (
     <MvpPage
@@ -592,7 +633,14 @@ export const ModelCenterComponent = ({
             <Input placeholder="自动取自来源名称，可修改" />
           </Form.Item>
           <Form.Item name="authUsers" label="授权用户（空=仅凭据调用）">
-            <Select mode="tags" placeholder="输入用户名后回车，如 bob" open={false} />
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择已启用用户"
+              options={authorizedUserSelectOptions}
+              loading={authorizedUsersLoading}
+            />
           </Form.Item>
           <Form.Item name="ipWhitelist" label="IP 白名单（空=任意 IP；支持 CIDR）">
             <Select mode="tags" placeholder="如 10.0.0.0/8、1.2.3.4" open={false} />
@@ -723,7 +771,14 @@ export const ModelCenterComponent = ({
                 name="authorizedUsers"
                 label="授权用户（空=仅凭据调用；凭证调用者不受约束）"
               >
-                <Select mode="tags" placeholder="输入用户名后回车" open={false} />
+                <Select
+                  mode="multiple"
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="请选择已启用用户"
+                  options={authorizedUserSelectOptions}
+                  loading={authorizedUsersLoading}
+                />
               </Form.Item>
               <Form.Item name="ipWhitelist" label="IP 白名单（空=任意 IP；支持 CIDR）">
                 <Select mode="tags" placeholder="IP 或 CIDR" open={false} />

@@ -1,4 +1,4 @@
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   Button,
   Form,
@@ -11,133 +11,152 @@ import {
   Table,
   Tag,
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { formatTime, MvpPage } from '@/modules/data-sandbox-mvp/common';
+import {
+  ManagedUser,
+  ManagedUserStatus,
+  SystemUserManagementApi,
+} from '@/services/system-user-management';
 
 import styles from './index.less';
-import { createEntityId, SandboxUser, useSystemManagementStore } from './store';
+
+const INITIAL_PASSWORD = 'HUSTnlp2026!';
 
 const accountStatus = {
   ENABLED: { label: '正常', color: 'success' },
   DISABLED: { label: '停用', color: 'error' },
 } as const;
 
-export const UserManagementComponent = () => {
-  const { state, updateState } = useSystemManagementStore();
-  const [keyword, setKeyword] = useState('');
-  const [tenantFilter, setTenantFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [editing, setEditing] = useState<SandboxUser>();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [form] = Form.useForm<SandboxUser>();
+type UserForm = Pick<ManagedUser, 'account' | 'displayName'>;
 
-  const tenantNames = useMemo(
-    () => Object.fromEntries(state.tenants.map((tenant) => [tenant.id, tenant.name])),
-    [state.tenants],
-  );
-  const roleNames = useMemo(
-    () => Object.fromEntries(state.roles.map((role) => [role.id, role.name])),
-    [state.roles],
-  );
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : '操作失败，请稍后重试';
+
+export const UserManagementComponent = () => {
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [keyword, setKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [editing, setEditing] = useState<ManagedUser>();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form] = Form.useForm<UserForm>();
+
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      setUsers((await SystemUserManagementApi.list()) || []);
+    } catch (error) {
+      message.error(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
+
   const filteredUsers = useMemo(() => {
     const normalized = keyword.trim().toLowerCase();
-    return state.users.filter((user) => {
+    return users.filter((user) => {
       const matchesKeyword =
         !normalized ||
         user.account.toLowerCase().includes(normalized) ||
         user.displayName.toLowerCase().includes(normalized);
-      return (
-        matchesKeyword &&
-        (!tenantFilter || user.tenantId === tenantFilter) &&
-        (!statusFilter || user.status === statusFilter)
-      );
+      return matchesKeyword && (!statusFilter || user.status === statusFilter);
     });
-  }, [keyword, state.users, statusFilter, tenantFilter]);
+  }, [keyword, statusFilter, users]);
 
   const openCreate = () => {
     setEditing(undefined);
     form.resetFields();
-    form.setFieldsValue({
-      status: 'ENABLED',
-      roleIds: [],
-      tenantId: state.tenants.find((item) => item.status === 'ACTIVE')?.id,
-    } as SandboxUser);
     setModalOpen(true);
   };
 
-  const openEdit = (user: SandboxUser) => {
+  const openEdit = (user: ManagedUser) => {
     setEditing(user);
-    form.setFieldsValue(user);
+    form.setFieldsValue({
+      account: user.account,
+      displayName: user.displayName,
+    });
     setModalOpen(true);
   };
 
   const saveUser = async () => {
     const values = await form.validateFields();
-    const account = values.account.trim();
-    const duplicated = state.users.some(
-      (user) =>
-        user.id !== editing?.id && user.account.toLowerCase() === account.toLowerCase(),
-    );
-    if (duplicated) {
-      message.error('账户名已存在');
-      return;
+    setSaving(true);
+    try {
+      const payload = {
+        account: values.account.trim().toLowerCase(),
+        displayName: values.displayName.trim(),
+      };
+      if (editing) {
+        await SystemUserManagementApi.update(payload);
+        message.success('用户信息已更新');
+      } else {
+        await SystemUserManagementApi.create(payload);
+        message.success(`用户已创建，初始密码为 ${INITIAL_PASSWORD}`);
+      }
+      setModalOpen(false);
+      await loadUsers();
+    } catch (error) {
+      message.error(errorMessage(error));
+    } finally {
+      setSaving(false);
     }
-    updateState((current) => ({
-      ...current,
-      users: editing
-        ? current.users.map((user) =>
-            user.id === editing.id
-              ? {
-                  ...user,
-                  ...values,
-                  account,
-                  displayName: values.displayName.trim(),
-                }
-              : user,
-          )
-        : [
-            {
-              ...values,
-              id: createEntityId('user'),
-              account,
-              displayName: values.displayName.trim(),
-              createdAt: new Date().toISOString(),
-            },
-            ...current.users,
-          ],
-    }));
-    message.success(editing ? '用户信息已更新' : '用户已创建');
-    setModalOpen(false);
   };
 
-  const toggleUser = (user: SandboxUser) => {
-    const status = user.status === 'ENABLED' ? 'DISABLED' : 'ENABLED';
-    updateState((current) => ({
-      ...current,
-      users: current.users.map((item) =>
-        item.id === user.id ? { ...item, status } : item,
-      ),
-    }));
-    message.success(status === 'ENABLED' ? '用户已启用' : '用户已停用');
+  const toggleUser = async (user: ManagedUser) => {
+    const status: ManagedUserStatus =
+      user.status === 'ENABLED' ? 'DISABLED' : 'ENABLED';
+    try {
+      await SystemUserManagementApi.changeStatus(user.account, status);
+      message.success(status === 'ENABLED' ? '用户已启用' : '用户已停用');
+      await loadUsers();
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
   };
 
-  const deleteUser = (user: SandboxUser) => {
-    updateState((current) => ({
-      ...current,
-      users: current.users.filter((item) => item.id !== user.id),
-    }));
-    message.success('用户已删除');
+  const resetPassword = async (user: ManagedUser) => {
+    try {
+      await SystemUserManagementApi.resetPassword(user.account);
+      message.success(`密码已重置为 ${INITIAL_PASSWORD}`);
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
+  };
+
+  const deleteUser = async (user: ManagedUser) => {
+    try {
+      await SystemUserManagementApi.delete(user.account);
+      message.success('用户已删除，该账户名可重新创建');
+      await loadUsers();
+    } catch (error) {
+      message.error(errorMessage(error));
+    }
   };
 
   return (
     <MvpPage
       title="用户管理"
-      description="管理数据沙箱账号，并为用户分配所属租户和沙箱角色"
+      description="管理可真实登录数据沙箱的用户账号；新建和重置密码均使用统一初始密码"
       extra={
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          新增用户
-        </Button>
+        <Space>
+          <Button
+            icon={<ReloadOutlined />}
+            loading={loading}
+            onClick={() => void loadUsers()}
+          >
+            刷新
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            新增用户
+          </Button>
+        </Space>
       }
     >
       <div className={styles.toolbar}>
@@ -147,18 +166,6 @@ export const UserManagementComponent = () => {
             placeholder="搜索账户名或用户名称"
             onSearch={setKeyword}
             style={{ width: 260 }}
-          />
-          <Select
-            value={tenantFilter}
-            onChange={setTenantFilter}
-            style={{ width: 180 }}
-            options={[
-              { value: '', label: '全部租户' },
-              ...state.tenants.map((tenant) => ({
-                value: tenant.id,
-                label: tenant.name,
-              })),
-            ]}
           />
           <Select
             value={statusFilter}
@@ -174,18 +181,19 @@ export const UserManagementComponent = () => {
         <span>共 {filteredUsers.length} 个用户</span>
       </div>
       <Table
-        rowKey="id"
+        rowKey="account"
+        loading={loading}
         dataSource={filteredUsers}
         pagination={{
           pageSize: 10,
           showTotal: (total) => '共 ' + total + ' 条',
         }}
-        scroll={{ x: 1050 }}
+        scroll={{ x: 900 }}
         columns={[
           {
             title: '账户',
             dataIndex: 'account',
-            render: (value: string, row: SandboxUser) => (
+            render: (value: string, row: ManagedUser) => (
               <>
                 <span className={styles.cellTitle}>{value}</span>
                 <span className={styles.cellDescription}>{row.displayName}</span>
@@ -193,28 +201,10 @@ export const UserManagementComponent = () => {
             ),
           },
           {
-            title: '所属租户',
-            dataIndex: 'tenantId',
-            render: (value: string) => tenantNames[value] || '-',
-          },
-          {
-            title: '角色',
-            dataIndex: 'roleIds',
-            render: (values: string[]) => (
-              <Space size={[0, 4]} wrap>
-                {values.map((roleId) => (
-                  <Tag color="blue" key={roleId}>
-                    {roleNames[roleId] || roleId}
-                  </Tag>
-                ))}
-              </Space>
-            ),
-          },
-          {
             title: '状态',
             dataIndex: 'status',
-            width: 90,
-            render: (value: keyof typeof accountStatus) => (
+            width: 100,
+            render: (value: ManagedUserStatus) => (
               <Tag color={accountStatus[value].color}>{accountStatus[value].label}</Tag>
             ),
           },
@@ -233,9 +223,9 @@ export const UserManagementComponent = () => {
           {
             title: '操作',
             key: 'actions',
-            fixed: 'right',
-            width: 270,
-            render: (_: unknown, row: SandboxUser) => (
+            fixed: 'right' as const,
+            width: 310,
+            render: (_: unknown, row: ManagedUser) => (
               <Space size={0}>
                 <Button type="link" onClick={() => openEdit(row)}>
                   编辑
@@ -251,8 +241,8 @@ export const UserManagementComponent = () => {
                   </Button>
                 </Popconfirm>
                 <Popconfirm
-                  title="将该用户密码重置为系统初始密码？"
-                  onConfirm={() => message.success('密码已重置')}
+                  title={`确定将密码重置为 ${INITIAL_PASSWORD}？`}
+                  onConfirm={() => resetPassword(row)}
                 >
                   <Button type="link">重置密码</Button>
                 </Popconfirm>
@@ -272,67 +262,40 @@ export const UserManagementComponent = () => {
       <Modal
         open={modalOpen}
         title={editing ? '编辑用户' : '新增用户'}
+        confirmLoading={saving}
         onCancel={() => setModalOpen(false)}
-        onOk={saveUser}
+        onOk={() => void saveUser()}
         destroyOnClose
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
             name="account"
             label="账户名"
+            extra={
+              editing
+                ? undefined
+                : `创建后可使用该账户和初始密码 ${INITIAL_PASSWORD} 登录`
+            }
             rules={[
               { required: true, message: '请输入账户名' },
-              { min: 3, max: 50, message: '账户名长度为 3 到 50 个字符' },
+              {
+                pattern: /^[a-z][a-z0-9._-]{2,15}$/,
+                message:
+                  '须以字母开头，由 3-16 位小写字母、数字、点、下划线或短横线组成',
+              },
             ]}
           >
-            <Input disabled={!!editing} placeholder="请输入登录账户名" />
+            <Input disabled={!!editing} maxLength={16} placeholder="请输入登录账户名" />
           </Form.Item>
           <Form.Item
             name="displayName"
             label="用户名称"
-            rules={[{ required: true, message: '请输入用户名称' }]}
+            rules={[
+              { required: true, whitespace: true, message: '请输入用户名称' },
+              { max: 64, message: '用户名称不能超过 64 个字符' },
+            ]}
           >
-            <Input maxLength={20} placeholder="请输入用户显示名称" />
-          </Form.Item>
-          <Form.Item
-            name="tenantId"
-            label="所属租户"
-            rules={[{ required: true, message: '请选择所属租户' }]}
-          >
-            <Select
-              placeholder="请选择所属租户"
-              options={state.tenants
-                .filter(
-                  (tenant) =>
-                    tenant.status === 'ACTIVE' || tenant.id === editing?.tenantId,
-                )
-                .map((tenant) => ({
-                  value: tenant.id,
-                  label: tenant.name,
-                }))}
-            />
-          </Form.Item>
-          <Form.Item
-            name="roleIds"
-            label="用户角色"
-            rules={[{ required: true, message: '请至少选择一个角色' }]}
-          >
-            <Select
-              mode="multiple"
-              placeholder="请选择用户角色"
-              options={state.roles.map((role) => ({
-                value: role.id,
-                label: role.name,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="status" label="账号状态" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: 'ENABLED', label: '正常' },
-                { value: 'DISABLED', label: '停用' },
-              ]}
-            />
+            <Input maxLength={64} placeholder="请输入用户显示名称" />
           </Form.Item>
         </Form>
       </Modal>
