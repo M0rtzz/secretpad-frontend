@@ -109,25 +109,7 @@ const ComputeContext = ({
         subTitle="项目其他参与节点可查看沙箱和审批信息，但不能执行计算。"
       />
     );
-  return (
-    <>
-      <Alert
-        showIcon
-        type="info"
-        style={{ marginBottom: 16 }}
-        message={`${context.project?.name || context.sandbox?.project_id} / ${
-          context.sandbox?.name
-        }`}
-        description={`沙箱状态：${
-          context.sandbox?.status === 'EXPIRED' ? '过期' : '正常'
-        }`}
-        action={
-          <Button onClick={() => history.push(sandboxListUrl())}>切换沙箱</Button>
-        }
-      />
-      {children(context)}
-    </>
-  );
+  return <>{children(context)}</>;
 };
 
 export const DataComputeHomeComponent = () => {
@@ -158,7 +140,6 @@ export const DataComputeHomeComponent = () => {
             key={project.project_id}
             title={project.name}
             style={{ marginBottom: 16 }}
-            extra={<Tag>{project.compute_mode}</Tag>}
           >
             <Row gutter={[16, 16]}>
               {(project.sandboxes || []).map((sandbox: DataSandboxRecord) => (
