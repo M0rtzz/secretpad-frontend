@@ -245,11 +245,15 @@ export const DataCatalogComponent = () => {
   const openValidityEdit = (
     row: DataSandboxRecord,
     field: 'accessEnd' | 'validUntil',
-  ) => {
+  ) => setValidityEdit({ row, field });
+
+  // 回填须等弹框内的 Form 挂载后执行，否则首次打开时赋值会被丢弃，后续再次修改也取不到当前值
+  useEffect(() => {
+    if (!validityEdit) return;
+    const { row, field } = validityEdit;
     const current = field === 'accessEnd' ? row.access_end : row.control_valid_until;
-    setValidityEdit({ row, field });
     validityForm.setFieldsValue({ deadline: current ? dayjs(current) : undefined });
-  };
+  }, [validityEdit, validityForm]);
 
   /** 使用控制为整体覆盖写入，更改单个时间时需回填其余字段，避免被清空。 */
   const submitValidity = async ({ deadline }: { deadline?: Dayjs }) => {
@@ -701,6 +705,7 @@ export const DataCatalogComponent = () => {
       <Modal
         title={`更改${validityLabel}`}
         open={!!validityEdit}
+        destroyOnClose
         onCancel={() => setValidityEdit(undefined)}
         onOk={() => validityForm.submit()}
         okText="保存"
