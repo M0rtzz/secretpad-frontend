@@ -24,7 +24,9 @@ request.interceptors.request.use((url, options) => {
 request.interceptors.response.use(async (response) => {
   const { status } = await response.clone().json();
   if (status.code === 202011602) {
-    history.push('/login');
+    localStorage.removeItem('User-Token');
+    localStorage.removeItem('neverLogined');
+    history.replace('/login');
   }
   return response;
 });

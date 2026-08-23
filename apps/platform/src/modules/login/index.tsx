@@ -58,7 +58,7 @@ export class LoginModel extends Model {
       if (this.loginService.userInfo.platformType === Platform.AUTONOMY) {
         if (this.loginService.userInfo.ownerId) {
           localStorage.setItem('neverLogined', 'true');
-          history.push(`/edge?ownerId=${this.loginService.userInfo.ownerId}`);
+          history.replace(`/edge?ownerId=${this.loginService.userInfo.ownerId}`);
           message.success('登录成功');
           // 防止token失效后,直接刷新页面，重新登陆接口未重新调用
           this.interpreterService.getComponentI18n();
@@ -70,21 +70,21 @@ export class LoginModel extends Model {
       if (this.loginService.userInfo.platformType === 'EDGE') {
         if (this.loginService.userInfo.ownerId) {
           localStorage.setItem('neverLogined', 'true');
-          history.push(`/node?ownerId=${this.loginService.userInfo.ownerId}`);
+          history.replace(`/node?ownerId=${this.loginService.userInfo.ownerId}`);
         }
       } else {
         localStorage.setItem('neverLogined', 'true');
         if (notFirstTimeIn || !platformConfig.guide) {
-          history.push('/');
+          history.replace('/');
         } else {
           // edge 账号登陆center平台不需要跳转到guide页面
           if (
             this.loginService.userInfo.platformType === 'CENTER' &&
             this.loginService.userInfo?.ownerType === 'EDGE'
           ) {
-            history.push('/');
+            history.replace('/');
           } else {
-            history.push('/guide');
+            history.replace('/guide');
           }
           localStorage.setItem('notFirstTimeIn', 'true');
         }

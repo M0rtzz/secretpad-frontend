@@ -83,7 +83,9 @@ export const HeaderComponent = () => {
         name: loginService?.userInfo?.name,
       },
     );
-    history.push('/login');
+    localStorage.removeItem('User-Token');
+    localStorage.removeItem('neverLogined');
+    history.replace('/login');
   };
 
   const content = (

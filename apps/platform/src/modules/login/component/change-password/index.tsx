@@ -34,7 +34,9 @@ export const ChangePasswordModal = ({ visible, close }: IChangePasswordModal) =>
         await logout({
           name: loginService?.userInfo?.name,
         });
-        history.push('/login');
+        localStorage.removeItem('User-Token');
+        localStorage.removeItem('neverLogined');
+        history.replace('/login');
       } else {
         message.error(status?.msg);
         const codeList = [202012001, 202012002, 202012003, 202011601];
