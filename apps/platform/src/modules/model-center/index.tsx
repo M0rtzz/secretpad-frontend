@@ -51,56 +51,7 @@ const artifactTypeLabels: Record<string, string> = {
   FUNCTION: '函数',
 };
 
-const escapeHtml = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-/** 高亮 JSON 展示（key/字符串/数值/布尔 分色）。 */
-const JsonHighlight = ({ data }: { data: unknown }) => {
-  const text = JSON.stringify(data, null, 2);
-  const pattern =
-    /("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|(\s+)|(.)/g;
-  const spans: string[] = [];
-  let m: RegExpExecArray | null;
-  let last = 0;
-  while ((m = pattern.exec(text))) {
-    spans.push(escapeHtml(text.slice(last, m.index)));
-    const [, str, colon, lit, num, ws, other] = m;
-    if (str) {
-      spans.push(
-        `<span style="color:${colon ? '#0b7285' : '#a61e4d'}">${escapeHtml(
-          str,
-        )}</span>`,
-      );
-      if (colon) spans.push(escapeHtml(colon));
-    } else if (lit) {
-      spans.push(`<span style="color:#862e9c">${escapeHtml(lit)}</span>`);
-    } else if (num) {
-      spans.push(`<span style="color:#1864ab">${escapeHtml(num)}</span>`);
-    } else {
-      spans.push(escapeHtml(ws || other));
-    }
-    last = m.index + m[0].length;
-  }
-  spans.push(escapeHtml(text.slice(last)));
-  return (
-    <pre
-      style={{
-        background: '#f6f8fa',
-        padding: 12,
-        borderRadius: 6,
-        maxHeight: 320,
-        overflow: 'auto',
-        fontSize: 12,
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-all',
-        marginTop: 8,
-      }}
-      dangerouslySetInnerHTML={{ __html: spans.join('') }}
-    />
-  );
-};
-
-/** 解析调试输入：JSON 数组 → {rows:[...]}；{"rows":[...]} 直通；对象 → {rows:[对象]}。 */
+/** 解析调用示例：JSON 数组 → {rows:[...]}；{"rows":[...]} 直通；对象 → {rows:[对象]}。 */
 const parseDebugPayload = (input: string): DataSandboxRecord | null => {
   let parsed: unknown;
   try {
@@ -117,11 +68,7 @@ const parseDebugPayload = (input: string): DataSandboxRecord | null => {
   return null;
 };
 
-export const ModelCenterComponent = ({
-  context: _context,
-}: {
-  context?: DataSandboxRecord;
-}) => {
+export const ModelCenterComponent = ({ context }: { context: DataSandboxRecord }) => {
   /* ------------------------------- API 列表 ------------------------------- */
   const [apis, setApis] = useState<DataSandboxRecord[]>([]);
   const [apisLoading, setApisLoading] = useState(false);
@@ -138,8 +85,6 @@ export const ModelCenterComponent = ({
   const [detailItem, setDetailItem] = useState<DataSandboxRecord>();
   const [updateForm] = Form.useForm();
   const [debugInput, setDebugInput] = useState('[\n  {"age": 28, "balance": 45000}\n]');
-  const [debugResult, setDebugResult] = useState<DataSandboxRecord>();
-  const [debugLoading, setDebugLoading] = useState(false);
   const [authorizedUserOptions, setAuthorizedUserOptions] = useState<
     ManagedUserOption[]
   >([]);
@@ -148,13 +93,15 @@ export const ModelCenterComponent = ({
   const refreshApis = useCallback(async () => {
     setApisLoading(true);
     try {
-      setApis(responseData(await DataModelApi.apis({}), []));
+      setApis(
+        responseData(await DataModelApi.apis({ sandboxId: context.sandbox.id }), []),
+      );
     } catch (error: any) {
       message.error(error.message || '加载 API 失败');
     } finally {
       setApisLoading(false);
     }
-  }, []);
+  }, [context.sandbox.id]);
 
   const refreshAuthorizedUserOptions = useCallback(async () => {
     setAuthorizedUsersLoading(true);
@@ -418,33 +365,6 @@ export const ModelCenterComponent = ({
     });
   };
 
-  /* ------------------------------- 在线调试 ------------------------------- */
-
-  const runDebug = async () => {
-    const item = detailItem;
-    if (!item) return;
-    const payload = parseDebugPayload(debugInput);
-    if (!payload) {
-      message.warning('请输入合法 JSON（数组或 {"rows": [...]}）');
-      return;
-    }
-    setDebugLoading(true);
-    setDebugResult(undefined);
-    try {
-      const useCredential = !!(item.secret && item.app_id);
-      const result = useCredential
-        ? await DataModelApi.invokeWithCredential(item.app_id, item.secret, payload)
-        : await DataModelApi.invokeWithToken({ appId: item.app_id, ...payload });
-      setDebugResult(responseData(result, {}));
-      refreshApis();
-      refreshDetail(item.id);
-    } catch (error: any) {
-      message.error(error.message || '调用失败');
-    } finally {
-      setDebugLoading(false);
-    }
-  };
-
   /* ------------------------------- 渲染辅助 ------------------------------- */
 
   const endpoint = `${window.location.origin}${INVOKE_ENDPOINT}`;
@@ -551,8 +471,6 @@ export const ModelCenterComponent = ({
   ];
 
   const item = detailItem;
-  const debugRows = (debugResult?.rows || []) as string[][];
-  const debugHeader = (debugResult?.header || []) as string[];
   const authorizedUserSelectOptions = authorizedUserOptions.map((user) => ({
     value: user.account,
     label:
@@ -857,10 +775,10 @@ export const ModelCenterComponent = ({
             </pre>
 
             <Typography.Title level={5} style={{ marginTop: 16 }}>
-              在线调试控制台
+              调用参数示例
             </Typography.Title>
             <Typography.Text type="secondary">
-              输入 JSON 数组或 {'{"rows": [...]}'}，自动注入当前 API 的 App ID / 密钥
+              输入 JSON 数组或 {'{"rows": [...]}'}，用于生成上方 cURL 示例
             </Typography.Text>
             <Input.TextArea
               rows={5}
@@ -869,46 +787,6 @@ export const ModelCenterComponent = ({
               style={{ fontFamily: 'monospace', fontSize: 12, marginTop: 8 }}
               placeholder={'[{"age": 28, "balance": 45000}]'}
             />
-            <Space style={{ marginTop: 8 }}>
-              <Button
-                type="primary"
-                loading={debugLoading}
-                onClick={runDebug}
-                disabled={!item.app_id}
-              >
-                调用调试（{item.secret ? '凭据 X-APP-ID/SECRET' : 'User-Token'}）
-              </Button>
-            </Space>
-            {debugResult && (
-              <>
-                <Space style={{ marginTop: 12 }}>
-                  <Typography.Text strong>调用结果</Typography.Text>
-                  <Tag color="blue">
-                    {Number(debugResult.resultRows || 0)} 行 ·{' '}
-                    {Number(debugResult.elapsedMs || 0)}ms
-                  </Tag>
-                </Space>
-                {debugHeader.length ? (
-                  <Table
-                    size="small"
-                    rowKey={(_, i) => String(i)}
-                    pagination={false}
-                    scroll={{ x: 'max-content', y: 260 }}
-                    dataSource={debugRows.map((r) =>
-                      Object.fromEntries(debugHeader.map((h, j) => [h, r[j]])),
-                    )}
-                    columns={debugHeader.map((h) => ({
-                      title: h,
-                      dataIndex: h,
-                      ellipsis: true,
-                      width: 120,
-                    }))}
-                  />
-                ) : (
-                  <JsonHighlight data={debugResult} />
-                )}
-              </>
-            )}
           </>
         )}
       </Drawer>
