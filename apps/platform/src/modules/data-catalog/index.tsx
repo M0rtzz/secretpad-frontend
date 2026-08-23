@@ -585,7 +585,7 @@ export const DataCatalogComponent = () => {
                     <Button
                       type="primary"
                       loading={databaseLoading}
-                      disabled={!databasePreview}
+                      disabled={!selectedDatabaseTables.length}
                       onClick={importDatabase}
                     >
                       导入为数据资产
