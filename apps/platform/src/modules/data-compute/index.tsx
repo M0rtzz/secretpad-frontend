@@ -12,6 +12,7 @@ import {
   Layout,
   message,
   Modal,
+  Popconfirm,
   Result,
   Row,
   Select,
@@ -1104,6 +1105,18 @@ const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
       setModelsLoading(false);
     }
   };
+  const deleteCanvas = async (canvas: DataSandboxRecord) => {
+    try {
+      responseData(
+        await DataComputeApi.deleteCanvas(canvas.id, context.sandbox.id),
+        {},
+      );
+      message.success('画布已删除');
+      await refresh();
+    } catch (e: any) {
+      message.error(e.message || '删除画布失败');
+    }
+  };
   const enterDag = (canvas?: DataSandboxRecord) =>
     history.push(
       {
@@ -1165,6 +1178,17 @@ const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
                 >
                   信息设置
                 </Button>
+                <Popconfirm
+                  title={`确定删除画布“${String(row.name || '')}”吗？`}
+                  description="删除后将无法继续编辑该画布。"
+                  okText="确认删除"
+                  cancelText="取消"
+                  onConfirm={() => deleteCanvas(row)}
+                >
+                  <Button type="link" danger>
+                    删除
+                  </Button>
+                </Popconfirm>
               </Space>
             ),
           },

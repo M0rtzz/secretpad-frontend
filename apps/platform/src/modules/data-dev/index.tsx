@@ -259,6 +259,7 @@ export const DataDevComponent = () => {
     setArtifactItem(row);
     artifactForm.setFieldsValue({
       name: row.name,
+      type: row.type,
       description: row.description || '',
     });
     setArtifactOpen(true);
