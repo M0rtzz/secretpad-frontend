@@ -244,6 +244,8 @@ export const DataComputeApi = {
     computeGet<DataSandboxRecord[]>('/canvases', { sandboxId }),
   saveCanvas: (data: DataSandboxRecord) =>
     computePost<DataSandboxRecord>('/canvases/save', data),
+  deleteCanvas: (id: string, sandboxId: string) =>
+    computePost<DataSandboxRecord>('/canvases/delete', { id, sandboxId }),
   reports: (sandboxId: string, type = '') =>
     computeGet<DataSandboxRecord[]>('/reports', { sandboxId, type }),
   // 沙箱权威库数据目录（Stage 3）：仅沙箱创建人
@@ -305,6 +307,8 @@ export const DataComputeApi = {
     computeGet<DataSandboxRecord[]>('/canvas/versions', { canvasId }),
   canvasModels: (canvasId: string) =>
     computeGet<DataSandboxRecord[]>('/canvas/models', { canvasId }),
+  canvasModelReport: (canvasModelId: string, testId = '') =>
+    computeGet<DataSandboxRecord>('/canvas/models/report', { canvasModelId, testId }),
   canvasModelCandidates: (canvasId: string) =>
     computeGet<DataSandboxRecord[]>('/canvas/models/candidates', { canvasId }),
   saveCanvasModel: (data: DataSandboxRecord) =>

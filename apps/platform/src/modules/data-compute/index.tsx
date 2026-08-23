@@ -18,20 +18,20 @@ import {
   Space,
   Table,
   Tag,
+  Tabs,
   Typography,
   Menu,
 } from 'antd';
 import {
   ArrowLeftOutlined,
   AppstoreOutlined,
-  BarChartOutlined,
   CodeOutlined,
   FundOutlined,
   PartitionOutlined,
   TableOutlined,
 } from '@ant-design/icons';
 import { parse } from 'query-string';
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { history, useLocation } from 'umi';
 
 import { DataDevComponent } from '@/modules/data-dev';
@@ -405,7 +405,6 @@ export const SandboxWorkspaceComponent = () => {
     { key: 'algorithm', icon: <FundOutlined />, label: '自定义算法' },
     { key: 'components', icon: <AppstoreOutlined />, label: '建模组件' },
     { key: 'visual', icon: <PartitionOutlined />, label: '可视化建模' },
-    { key: 'reports', icon: <BarChartOutlined />, label: '模型报告信息' },
   ];
   const page =
     workspace === 'dev' ? (
@@ -416,8 +415,6 @@ export const SandboxWorkspaceComponent = () => {
       <ModelingComponentsComponent />
     ) : workspace === 'visual' ? (
       <VisualModelingComponent />
-    ) : workspace === 'reports' ? (
-      <ModelReportsComponent />
     ) : (
       <WorkspaceDataCatalog sandboxId={sandboxId} />
     );
@@ -657,6 +654,313 @@ const WorkflowTopology = ({ graph }: { graph: WorkflowGraph }) => {
   );
 };
 
+const reportObject = (value: unknown): DataSandboxRecord =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as DataSandboxRecord)
+    : {};
+
+const reportRows = (value: unknown): DataSandboxRecord[] =>
+  Array.isArray(value) ? (value as DataSandboxRecord[]) : [];
+
+const reportStrings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.map((item) => String(item)) : [];
+
+const reportValue = (value: unknown) => {
+  if (Array.isArray(value)) return value.map(String).join('、') || '-';
+  if (value && typeof value === 'object')
+    return Object.entries(value as DataSandboxRecord)
+      .map(([key, item]) => `${key}=${reportValue(item)}`)
+      .join('；');
+  return value === null || value === undefined || value === '' ? '-' : String(value);
+};
+
+const reportParamSummary = (value: unknown) => {
+  const params = reportObject(value);
+  const entries = Object.entries(params).filter(
+    ([key]) => !['features', 'label', 'columns'].includes(key),
+  );
+  return entries.length
+    ? entries.map(([key, item]) => `${key}=${reportValue(item)}`).join('；')
+    : '-';
+};
+
+const ModelEvaluationSection = ({ evaluation }: { evaluation: DataSandboxRecord }) => {
+  if (evaluation.status !== 'AVAILABLE') {
+    return (
+      <Alert
+        showIcon
+        type="info"
+        message={evaluation.message || '当前模型尚无成功的模型测试报告'}
+      />
+    );
+  }
+  const metrics = reportObject(evaluation.metrics);
+  const input = reportObject(evaluation.inputSummary);
+  const output = reportObject(evaluation.outputSummary);
+  const preview = reportObject(evaluation.resultPreview);
+  const header = reportStrings(preview.header);
+  const rows = Array.isArray(preview.rows) ? (preview.rows as unknown[][]) : [];
+  const metricLabels: Record<string, string> = {
+    accuracy: 'Accuracy',
+    precision: 'Precision',
+    recall: 'Recall',
+    f1: 'F1',
+    mae: 'MAE',
+    rmse: 'RMSE',
+    r2: 'R²',
+    samples: '评估样本数',
+    classes: '类别集合',
+  };
+  const metricItems = Object.entries(metrics)
+    .filter(([key]) => !['metricType', 'confusionMatrix'].includes(key))
+    .map(([key, value]) => ({
+      key,
+      label: metricLabels[key] || key,
+      children: reportValue(value),
+    }));
+  const confusion = reportObject(metrics.confusionMatrix);
+  if (Object.keys(confusion).length) {
+    metricItems.push({
+      key: 'confusionMatrix',
+      label: '混淆矩阵',
+      children: `TP ${confusion.tp ?? 0} / FP ${confusion.fp ?? 0} / FN ${
+        confusion.fn ?? 0
+      } / TN ${confusion.tn ?? 0}`,
+    });
+  }
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Descriptions
+        bordered
+        size="small"
+        column={2}
+        items={[
+          { key: 'test', label: '测试批次', children: evaluation.testId || '-' },
+          { key: 'mode', label: '运行模式', children: evaluation.runMode || '-' },
+          {
+            key: 'time',
+            label: '完成时间',
+            children: formatTime(evaluation.finishedAt),
+          },
+          {
+            key: 'input',
+            label: '输入数据',
+            children: `${input.rowCount ?? 0} 行 / ${input.columnCount ?? 0} 列`,
+          },
+          {
+            key: 'output',
+            label: '输出数据',
+            children: `${output.rowCount ?? 0} 行 / ${output.columnCount ?? 0} 列`,
+          },
+        ]}
+      />
+      {metricItems.length ? (
+        <Descriptions bordered size="small" column={2} items={metricItems} />
+      ) : (
+        <Alert showIcon type="warning" message="该测试批次没有可展示的评估指标" />
+      )}
+      {header.length ? (
+        <Table
+          size="small"
+          bordered
+          rowKey={(_, index) => String(index)}
+          pagination={
+            rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false
+          }
+          scroll={{ x: 'max-content', y: 360 }}
+          dataSource={rows}
+          columns={header.map((name, index) => ({
+            key: `${name}-${index}`,
+            title: name,
+            width: 140,
+            ellipsis: true,
+            render: (_: unknown, row: unknown[]) => reportValue(row[index]),
+          }))}
+        />
+      ) : null}
+    </Space>
+  );
+};
+
+const WorkflowModelReport = ({
+  report,
+  onTestChange,
+}: {
+  report?: DataSandboxRecord;
+  onTestChange: (testId: string) => void;
+}) => {
+  if (!report) return <Card loading />;
+  if (report.reportStatus !== 'AVAILABLE') {
+    return (
+      <Result
+        status="info"
+        title="模型报告暂不可用"
+        subTitle={report.message || '当前工作流模型没有可关联的训练结果'}
+      />
+    );
+  }
+  const model = reportObject(report.model);
+  const algorithm = reportObject(report.algorithm);
+  const summary = reportObject(report.featureSummary);
+  const features = reportRows(report.features);
+  const excluded = reportRows(report.excludedFields);
+  const preprocessing = reportRows(report.preprocessingSteps);
+  const evaluation = reportObject(report.evaluation);
+  const testHistory = reportRows(report.testHistory);
+  return (
+    <Space direction="vertical" size={20} style={{ width: '100%' }}>
+      {report.runBinding === 'LEGACY_INFERRED' && (
+        <Alert
+          showIcon
+          type="warning"
+          message="历史模型缺少运行快照绑定，本报告依据该模型唯一的成功训练记录回溯生成"
+        />
+      )}
+      <Divider orientation="left">报告概览</Divider>
+      <Descriptions
+        bordered
+        size="small"
+        column={2}
+        items={[
+          { key: 'name', label: '模型名称', children: model.name || '-' },
+          {
+            key: 'version',
+            label: '画布版本',
+            children: `v${model.canvas_version || '-'}`,
+          },
+          { key: 'model', label: '执行模型 ID', children: model.model_id || '-' },
+          { key: 'run', label: '训练运行批次', children: report.sourceRunId || '-' },
+          {
+            key: 'algorithm',
+            label: '算法',
+            children: algorithm.componentName || algorithm.componentCode || '-',
+          },
+          { key: 'creator', label: '保存人', children: model.created_by || '-' },
+          { key: 'time', label: '保存时间', children: formatTime(model.created_at) },
+        ]}
+      />
+      <Divider orientation="left">模型评估</Divider>
+      {testHistory.length > 1 && (
+        <Select
+          value={evaluation.testId}
+          style={{ width: 320 }}
+          aria-label="选择模型测试批次"
+          options={testHistory.map((test) => ({
+            value: test.id,
+            label: `${formatTime(test.finished_at)} · ${test.metric_type || 'auto'}`,
+          }))}
+          onChange={onTestChange}
+        />
+      )}
+      <ModelEvaluationSection evaluation={evaluation} />
+      <Divider orientation="left">特征概览</Divider>
+      <Descriptions
+        bordered
+        size="small"
+        column={2}
+        items={[
+          {
+            key: 'source',
+            label: '原始字段数',
+            children: String(summary.sourceFieldCount ?? 0),
+          },
+          {
+            key: 'feature',
+            label: '最终入模特征数',
+            children: String(summary.modelFeatureCount ?? 0),
+          },
+          {
+            key: 'excluded',
+            label: '未入模字段数',
+            children: String(summary.excludedFieldCount ?? 0),
+          },
+          {
+            key: 'preprocessing',
+            label: '前处理步骤数',
+            children: String(summary.preprocessingCount ?? 0),
+          },
+          { key: 'label', label: '标签字段', children: summary.label || '-' },
+          { key: 'table', label: '训练输入表', children: summary.inputTable || '-' },
+        ]}
+      />
+      <Divider orientation="left">最终入模特征</Divider>
+      <Table
+        rowKey="name"
+        size="small"
+        pagination={
+          features.length > 20 ? { pageSize: 20, showSizeChanger: false } : false
+        }
+        dataSource={features}
+        locale={{ emptyText: '没有获取到最终入模特征' }}
+        columns={[
+          { title: '字段名称', dataIndex: 'name' },
+          { title: '原始类型', dataIndex: 'sourceType' },
+          { title: '入模类型', dataIndex: 'modelType' },
+          {
+            title: '选择方式',
+            dataIndex: 'selectionMethod',
+            render: (value) => (value === 'MANUAL' ? '训练时选择' : '算法自动选择'),
+          },
+          {
+            title: '前处理操作',
+            dataIndex: 'preprocessing',
+            render: (value) => reportValue(value),
+          },
+          { title: '状态', render: () => <Tag color="success">已入模</Tag> },
+        ]}
+      />
+      <Divider orientation="left">前处理操作</Divider>
+      <Table
+        rowKey="nodeId"
+        size="small"
+        pagination={false}
+        scroll={{ x: 'max-content' }}
+        dataSource={preprocessing}
+        locale={{ emptyText: '该模型没有上游前处理步骤' }}
+        columns={[
+          { title: '顺序', dataIndex: 'order', width: 72 },
+          { title: '处理组件', dataIndex: 'componentName', width: 140 },
+          {
+            title: '处理字段',
+            render: (_, row) =>
+              row.appliesToAll ? '全部适用字段' : reportValue(row.columns),
+          },
+          {
+            title: '配置参数',
+            dataIndex: 'configuredParams',
+            render: reportParamSummary,
+          },
+          {
+            title: '实际拟合参数',
+            dataIndex: 'fittedParams',
+            render: reportParamSummary,
+          },
+          {
+            title: '状态',
+            dataIndex: 'status',
+            render: (value) => <Tag>{value || '-'}</Tag>,
+          },
+        ]}
+      />
+      <Divider orientation="left">未入模字段</Divider>
+      <Table
+        rowKey="name"
+        size="small"
+        pagination={
+          excluded.length > 20 ? { pageSize: 20, showSizeChanger: false } : false
+        }
+        dataSource={excluded}
+        locale={{ emptyText: '没有未入模字段' }}
+        columns={[
+          { title: '字段名称', dataIndex: 'name' },
+          { title: '字段类型', dataIndex: 'type' },
+          { title: '未入模原因', dataIndex: 'reason' },
+        ]}
+      />
+    </Space>
+  );
+};
+
 const WorkflowModelDrawer = ({
   model,
   onClose,
@@ -664,6 +968,10 @@ const WorkflowModelDrawer = ({
   model?: DataSandboxRecord;
   onClose: () => void;
 }) => {
+  const [activeTab, setActiveTab] = useState('detail');
+  const [report, setReport] = useState<DataSandboxRecord>();
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
   const graph = workflowGraph(model?.graph_json);
   const names = new Map(
     graph.nodes.map((node) => [
@@ -671,77 +979,119 @@ const WorkflowModelDrawer = ({
       String(node.data?.name || node.data?.componentCode || node.id),
     ]),
   );
+  useEffect(() => {
+    setActiveTab('detail');
+    setReport(undefined);
+    setReportError('');
+  }, [model?.id]);
+  const loadReport = async (testId = '') => {
+    if (!model?.id) return;
+    setReportLoading(true);
+    setReportError('');
+    try {
+      setReport(
+        responseData(await DataComputeApi.canvasModelReport(model.id, testId), {}),
+      );
+    } catch (e: any) {
+      setReportError(e.message || '模型报告加载失败');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+  const detail = model ? (
+    <>
+      <Descriptions
+        bordered
+        size="small"
+        column={2}
+        items={[
+          { key: 'name', label: '模型名称', children: model.name },
+          {
+            key: 'version',
+            label: '画布版本',
+            children: `v${model.canvas_version}`,
+          },
+          {
+            key: 'status',
+            label: '状态',
+            children: (
+              <Tag color={model.status === 'READY' ? 'success' : 'default'}>
+                {model.status === 'READY' ? '可发布 API' : '拓扑草稿'}
+              </Tag>
+            ),
+          },
+          { key: 'model', label: '执行模型 ID', children: model.model_id || '-' },
+          { key: 'creator', label: '保存人', children: model.created_by },
+          {
+            key: 'time',
+            label: '保存时间',
+            children: formatTime(model.created_at),
+          },
+          {
+            key: 'description',
+            label: '说明',
+            children: model.description || '-',
+            span: 2,
+          },
+        ]}
+      />
+      <Divider orientation="left">组件清单</Divider>
+      <Table
+        rowKey="id"
+        size="small"
+        pagination={false}
+        dataSource={graph.nodes}
+        columns={[
+          {
+            title: '组件名称',
+            render: (_, row) => row.data?.name || row.data?.componentCode || row.id,
+          },
+          { title: '组件编码', render: (_, row) => row.data?.componentCode || '-' },
+          { title: '节点 ID', dataIndex: 'id' },
+        ]}
+      />
+      <Divider orientation="left">连接拓扑</Divider>
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <WorkflowTopology graph={graph} />
+        <Typography.Text type="secondary">
+          {graph.edges.length
+            ? graph.edges
+                .map(
+                  (edge) =>
+                    `${names.get(edge.source) || edge.source} → ${
+                      names.get(edge.target) || edge.target
+                    }`,
+                )
+                .join('；')
+            : '该工作流没有组件连线'}
+        </Typography.Text>
+      </Space>
+    </>
+  ) : null;
   return (
-    <Drawer title="工作流模型详情" open={!!model} onClose={onClose} width={880}>
+    <Drawer title="工作流模型" open={!!model} onClose={onClose} width={960}>
       {model && (
-        <>
-          <Descriptions
-            bordered
-            size="small"
-            column={2}
-            items={[
-              { key: 'name', label: '模型名称', children: model.name },
-              {
-                key: 'version',
-                label: '画布版本',
-                children: `v${model.canvas_version}`,
-              },
-              {
-                key: 'status',
-                label: '状态',
-                children: (
-                  <Tag color={model.status === 'READY' ? 'success' : 'default'}>
-                    {model.status === 'READY' ? '可发布 API' : '拓扑草稿'}
-                  </Tag>
-                ),
-              },
-              { key: 'model', label: '执行模型 ID', children: model.model_id || '-' },
-              { key: 'creator', label: '保存人', children: model.created_by },
-              {
-                key: 'time',
-                label: '保存时间',
-                children: formatTime(model.created_at),
-              },
-              {
-                key: 'description',
-                label: '说明',
-                children: model.description || '-',
-                span: 2,
-              },
-            ]}
-          />
-          <Divider orientation="left">组件清单</Divider>
-          <Table
-            rowKey="id"
-            size="small"
-            pagination={false}
-            dataSource={graph.nodes}
-            columns={[
-              {
-                title: '组件名称',
-                render: (_, row) => row.data?.name || row.data?.componentCode || row.id,
-              },
-              { title: '组件编码', render: (_, row) => row.data?.componentCode || '-' },
-              { title: '节点 ID', dataIndex: 'id' },
-            ]}
-          />
-          <Divider orientation="left">连接拓扑</Divider>
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <WorkflowTopology graph={graph} />
-            <Typography.Text type="secondary">
-              {graph.edges.length
-                ? graph.edges
-                    .map(
-                      (edge) =>
-                        `${names.get(edge.source) || edge.source} → ${
-                          names.get(edge.target) || edge.target
-                        }`,
-                    )
-                    .join('；')
-                : '该工作流没有组件连线'}
-            </Typography.Text>
-          </Space>
-        </>
+        <Tabs
+          activeKey={activeTab}
+          onChange={(key) => {
+            setActiveTab(key);
+            if (key === 'report' && !report && !reportLoading) void loadReport();
+          }}
+          items={[
+            { key: 'detail', label: '模型详情', children: detail },
+            {
+              key: 'report',
+              label: '模型报告',
+              children: reportError ? (
+                <Alert showIcon type="error" message={reportError} />
+              ) : reportLoading ? (
+                <Card loading />
+              ) : (
+                <WorkflowModelReport report={report} onTestChange={loadReport} />
+              ),
+            },
+          ]}
+        />
       )}
     </Drawer>
   );
@@ -926,156 +1276,6 @@ const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
         model={modelDetail}
         onClose={() => setModelDetail(undefined)}
       />
-    </MvpPage>
-  );
-};
-
-export const ModelReportsComponent = () => (
-  <ComputeContext>
-    {(context) => <ReportList sandboxId={context.sandbox.id} />}
-  </ComputeContext>
-);
-
-const parseReportPayload = (value: unknown): DataSandboxRecord => {
-  if (value && typeof value === 'object') return value as DataSandboxRecord;
-  if (typeof value !== 'string' || !value) return {};
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
-};
-
-const ReportPayloadDetail = ({ report }: { report: DataSandboxRecord }) => {
-  const payload = parseReportPayload(report.payload_json);
-  const preview = parseReportPayload(payload.preview || payload.resultPreview);
-  const header = Array.isArray(preview.header) ? (preview.header as string[]) : [];
-  const rows = Array.isArray(preview.rows) ? (preview.rows as unknown[][]) : [];
-  const resultRows = preview.resultRows ?? payload.resultRows ?? rows.length;
-  return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Descriptions
-        bordered
-        size="small"
-        column={2}
-        items={[
-          { key: 'run', label: '运行批次', children: report.run_id || '-' },
-          {
-            key: 'component',
-            label: '组件',
-            children: payload.componentCode || report.component_id || '-',
-          },
-          { key: 'mode', label: '运行模式', children: payload.runMode || '-' },
-          { key: 'rows', label: '结果行数', children: String(resultRows ?? 0) },
-        ]}
-      />
-      {header.length ? (
-        <Table
-          size="small"
-          bordered
-          rowKey={(_, index) => String(index)}
-          pagination={
-            rows.length > 20 ? { pageSize: 20, showSizeChanger: false } : false
-          }
-          scroll={{ x: 'max-content', y: 420 }}
-          dataSource={rows}
-          columns={header.map((name, index) => ({
-            key: `${name}-${index}`,
-            title: name,
-            width: 140,
-            ellipsis: true,
-            render: (_: unknown, row: unknown[]) => {
-              const value = row[index];
-              return value === null || value === undefined ? '' : String(value);
-            },
-          }))}
-        />
-      ) : (
-        <Alert
-          type="warning"
-          showIcon
-          message="该历史记录没有可展示的逐行结果"
-          description="系统不会使用其他运行批次的最新结果替代当前历史记录。"
-        />
-      )}
-      <Divider orientation="left">原始报告数据</Divider>
-      <pre style={{ maxHeight: 240, overflow: 'auto', margin: 0 }}>
-        {JSON.stringify(payload, null, 2)}
-      </pre>
-    </Space>
-  );
-};
-
-const ReportList = ({ sandboxId }: { sandboxId: string }) => {
-  const [rows, setRows] = useState<DataSandboxRecord[]>([]);
-  const [type, setType] = useState('');
-  const [detail, setDetail] = useState<DataSandboxRecord>();
-  const refresh = useCallback(
-    async () =>
-      setRows(responseData(await DataComputeApi.reports(sandboxId, type), [])),
-    [sandboxId, type],
-  );
-  useEffect(() => void refresh(), [refresh]);
-  const types = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.report_type).filter(Boolean))),
-    [rows],
-  );
-  const exportJson = (row: DataSandboxRecord) => {
-    const blob = new Blob([row.payload_json || '{}'], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `${row.name || row.id}.json`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  };
-  return (
-    <MvpPage
-      title="沙箱智能建模：模型报告信息"
-      extra={<RefreshButton onClick={refresh} />}
-    >
-      <Space style={{ marginBottom: 16 }}>
-        <Select
-          allowClear
-          value={type || undefined}
-          placeholder="报告类型"
-          style={{ width: 220 }}
-          options={types.map((v) => ({ value: v, label: v }))}
-          onChange={(v) => setType(v || '')}
-        />
-      </Space>
-      <Table
-        rowKey="id"
-        dataSource={rows}
-        columns={[
-          { title: '报告', dataIndex: 'name' },
-          { title: '类型', dataIndex: 'report_type', render: (v) => <Tag>{v}</Tag> },
-          { title: '画布', dataIndex: 'canvas_id' },
-          { title: '运行批次', dataIndex: 'run_id' },
-          { title: '生成时间', dataIndex: 'created_at', render: formatTime },
-          {
-            title: '操作',
-            render: (_, row) => (
-              <Space>
-                <Button type="link" onClick={() => setDetail(row)}>
-                  查看
-                </Button>
-                <Button type="link" onClick={() => exportJson(row)}>
-                  导出 JSON
-                </Button>
-              </Space>
-            ),
-          },
-        ]}
-      />
-      <Modal
-        width={900}
-        title={detail?.name}
-        open={!!detail}
-        onCancel={() => setDetail(undefined)}
-        footer={null}
-      >
-        {detail && <ReportPayloadDetail report={detail} />}
-      </Modal>
     </MvpPage>
   );
 };
