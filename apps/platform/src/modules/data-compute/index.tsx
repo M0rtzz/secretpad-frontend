@@ -666,6 +666,7 @@ const ModelEvaluationSection = ({ evaluation }: { evaluation: DataSandboxRecord 
     });
   }
   const sourceLabels: Record<string, string> = {
+    MODEL_SAVE: '保存模型时自动评估',
     MODEL_TEST: '模型测试报告',
     CANVAS_EVALUATION_NODE: '画布评估组件',
     AUTO_EVALUATION: '训练结果自动评估',
@@ -749,6 +750,45 @@ const ModelEvaluationSection = ({ evaluation }: { evaluation: DataSandboxRecord 
             ellipsis: true,
             render: (_: unknown, row: unknown[]) => reportValue(row[index]),
           }))}
+        />
+      ) : null}
+    </Space>
+  );
+};
+
+const ScorecardSection = ({ data }: { data: DataSandboxRecord }) => {
+  if (!Object.keys(data).length) return null;
+  if (data.status !== 'AVAILABLE') {
+    return <Alert showIcon type="info" message={data.message || '评分卡结果不可用'} />;
+  }
+  const distribution = Array.isArray(data.distribution)
+    ? (data.distribution as DataSandboxRecord[])
+    : [];
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Descriptions
+        bordered
+        size="small"
+        column={3}
+        items={[
+          { key: 'mode', label: '评分模式', children: reportValue(data.mode) },
+          { key: 'samples', label: '评分样本数', children: reportValue(data.samples) },
+          { key: 'average', label: '平均分', children: reportValue(data.average) },
+          { key: 'minimum', label: '最低分', children: reportValue(data.minimum) },
+          { key: 'maximum', label: '最高分', children: reportValue(data.maximum) },
+        ]}
+      />
+      {distribution.length ? (
+        <Table
+          size="small"
+          rowKey={(_, index) => String(index)}
+          pagination={false}
+          dataSource={distribution}
+          columns={[
+            { title: '区间起点', dataIndex: 'from' },
+            { title: '区间终点', dataIndex: 'to' },
+            { title: '样本数', dataIndex: 'count' },
+          ]}
         />
       ) : null}
     </Space>
@@ -1005,6 +1045,7 @@ const WorkflowModelReport = ({
   const testHistory = reportRows(report.testHistory);
   const featureImportance = reportObject(report.featureImportance);
   const treeStructure = reportObject(report.treeStructure);
+  const scorecard = reportObject(report.scorecard);
   return (
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
       {report.runBinding === 'LEGACY_INFERRED' && (
@@ -1065,6 +1106,12 @@ const WorkflowModelReport = ({
             modelId={modelId}
             onComputed={onRefresh}
           />
+        </>
+      ) : null}
+      {Object.keys(scorecard).length ? (
+        <>
+          <Divider orientation="left">评分卡</Divider>
+          <ScorecardSection data={scorecard} />
         </>
       ) : null}
       <Divider orientation="left">特征概览</Divider>

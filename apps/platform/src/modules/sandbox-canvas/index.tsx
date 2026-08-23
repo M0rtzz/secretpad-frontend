@@ -16,16 +16,19 @@ import type { GraphEventHandlerProtocol } from '@secretflow/dag';
 import {
   Button,
   Alert,
+  Checkbox,
   Collapse,
   Descriptions,
   Divider,
   Empty,
   Form,
   Input,
+  InputNumber,
   List,
   Modal,
   Select,
   Space,
+  Switch,
   Tabs,
   Tag,
   Tooltip,
@@ -55,14 +58,25 @@ import { TemplateDrawer } from './template-drawer';
 import { VersionsDrawer } from './versions-drawer';
 import styles from './index.less';
 
-const CATEGORY_ORDER = [
-  '数据输入',
-  '数据处理',
-  '特征工程',
-  '统计分析',
-  '机器学习',
-  '模型评估',
-];
+const CATEGORY_ORDER = ['数据输入', '数据处理', '特征工程', '统计分析', '机器学习'];
+
+const METRIC_LABELS: Record<string, string> = {
+  accuracy: '准确率 Accuracy',
+  precision: '精确率 Precision',
+  recall: '召回率 Recall',
+  f1: 'F1',
+  auc: 'AUC',
+  confusionMatrix: '混淆矩阵',
+  mae: 'MAE',
+  rmse: 'RMSE',
+  r2: 'R²',
+};
+
+const SECTION_LABELS: Record<string, string> = {
+  featureImportance: '特征重要性',
+  treeStructure: '树结构',
+  scorecard: '评分卡',
+};
 
 const X6ReactPortalProvider = Portal.getProvider();
 
@@ -106,6 +120,24 @@ export const SandboxCanvasWorkspace = () => {
   );
   // 保存模型：选中的工作流最终输出节点
   const selectedResultNodeId = Form.useWatch('nodeId', modelForm);
+  const visibleSections = Form.useWatch('visibleSections', modelForm) as
+    | string[]
+    | undefined;
+
+  const applyCandidateDefaults = (candidate?: DataSandboxRecord) => {
+    modelForm.setFieldsValue({
+      visibleMetrics: (candidate?.available_metrics as string[]) || [],
+      visibleSections: (candidate?.available_sections as string[]) || [],
+      positiveLabel: '1',
+      threshold: 0.5,
+      baseScore: 600,
+      pdo: 20,
+      baseOdds: 20,
+      scoreMin: 300,
+      scoreMax: 900,
+      higherScoreForHigherPrediction: true,
+    });
+  };
 
   const goBack = async () => {
     const userInfo = await loginService.getUserInfo();
@@ -221,11 +253,13 @@ export const SandboxCanvasWorkspace = () => {
         [],
       );
       setModelCandidates(candidates);
+      const defaultCandidate = candidates.length === 1 ? candidates[0] : undefined;
       modelForm.setFieldsValue({
         name: `${String(view.canvas.name || '未命名画布')}-模型`,
         description: String(view.canvas.description || ''),
-        nodeId: candidates.length === 1 ? candidates[0].node_id : undefined,
+        nodeId: defaultCandidate?.node_id,
       });
+      applyCandidateDefaults(defaultCandidate);
       setModelOpen(true);
     } catch (error: any) {
       message.error(error.message || '加载模型信息失败');
@@ -243,6 +277,22 @@ export const SandboxCanvasWorkspace = () => {
           description: values.description || '',
           nodeId: values.nodeId || '',
           modelId: values.modelId || '',
+          reportConfig: {
+            visibleMetrics: values.visibleMetrics || [],
+            visibleSections: values.visibleSections || [],
+            positiveLabel: values.positiveLabel || '1',
+            threshold: values.threshold ?? 0.5,
+            scorecard: {
+              enabled: (values.visibleSections || []).includes('scorecard'),
+              baseScore: values.baseScore ?? 600,
+              pdo: values.pdo ?? 20,
+              baseOdds: values.baseOdds ?? 20,
+              scoreMin: values.scoreMin ?? 300,
+              scoreMax: values.scoreMax ?? 900,
+              higherScoreForHigherPrediction:
+                values.higherScoreForHigherPrediction ?? true,
+            },
+          },
         }),
         {},
       );
@@ -514,7 +564,7 @@ export const SandboxCanvasWorkspace = () => {
         onOk={saveModel}
         onCancel={() => setModelOpen(false)}
         destroyOnClose
-        width={560}
+        width={680}
       >
         {!modelCandidates.length && (
           <Alert
@@ -533,10 +583,17 @@ export const SandboxCanvasWorkspace = () => {
           >
             <Input maxLength={128} />
           </Form.Item>
-          <Form.Item name="nodeId" label="可执行工作流结果（发布 API 时必选）">
+          <Form.Item name="nodeId" label="训练结果（发布 API 时必选）">
             <Select
               allowClear
-              placeholder="选择工作流最终一次成功的输出结果"
+              placeholder="选择最近一次成功运行的训练节点"
+              onChange={(value) =>
+                applyCandidateDefaults(
+                  modelCandidates.find(
+                    (item) => String(item.node_id) === String(value),
+                  ),
+                )
+              }
               options={modelCandidates.map((item) => ({
                 value: item.node_id,
                 label: `${item.node_name}输出（${item.component_code}）${
@@ -568,6 +625,112 @@ export const SandboxCanvasWorkspace = () => {
                 </Descriptions.Item>
               )}
             </Descriptions>
+          )}
+          {selectedCandidate?.model_id && (
+            <>
+              <Alert
+                showIcon
+                type="info"
+                style={{ marginBottom: 16 }}
+                message="系统将计算全部适用指标"
+                description="以下配置仅控制模型报告展示内容，未勾选的指标仍会计算并保存。"
+              />
+              <Descriptions
+                bordered
+                column={2}
+                size="small"
+                style={{ marginBottom: 16 }}
+              >
+                <Descriptions.Item label="任务类型">
+                  {selectedCandidate.task_type === 'REGRESSION' ? '回归' : '分类'}
+                </Descriptions.Item>
+                <Descriptions.Item label="模型类型">
+                  {selectedCandidate.model_category === 'TREE' ? '树模型' : '普通模型'}
+                </Descriptions.Item>
+                <Descriptions.Item label="算法">
+                  {String(selectedCandidate.component_code || '-')}
+                </Descriptions.Item>
+                <Descriptions.Item label="标签列">
+                  {String(selectedCandidate.label || '-')}
+                </Descriptions.Item>
+              </Descriptions>
+              <Divider orientation="left">模型评估指标</Divider>
+              <Form.Item
+                name="visibleMetrics"
+                rules={[
+                  {
+                    validator: (_, value) =>
+                      Array.isArray(value) && value.length
+                        ? Promise.resolve()
+                        : Promise.reject(new Error('至少选择一个展示指标')),
+                  },
+                ]}
+              >
+                <Checkbox.Group
+                  options={(
+                    (selectedCandidate.available_metrics as string[]) || []
+                  ).map((metric) => ({
+                    label: METRIC_LABELS[metric] || metric,
+                    value: metric,
+                  }))}
+                />
+              </Form.Item>
+              {selectedCandidate.task_type === 'CLASSIFICATION' && (
+                <Space size={16} align="start">
+                  <Form.Item name="positiveLabel" label="正类标签">
+                    <Input style={{ width: 180 }} />
+                  </Form.Item>
+                  <Form.Item name="threshold" label="分类阈值">
+                    <InputNumber min={0} max={1} step={0.05} style={{ width: 180 }} />
+                  </Form.Item>
+                </Space>
+              )}
+              {selectedCandidate.model_category === 'TREE' && (
+                <>
+                  <Divider orientation="left">树模型报告</Divider>
+                  <Form.Item name="visibleSections">
+                    <Checkbox.Group
+                      options={(
+                        (selectedCandidate.available_sections as string[]) || []
+                      ).map((section) => ({
+                        label: SECTION_LABELS[section] || section,
+                        value: section,
+                      }))}
+                    />
+                  </Form.Item>
+                  {visibleSections?.includes('scorecard') &&
+                    (selectedCandidate.task_type === 'CLASSIFICATION' ? (
+                      <Space size={16} align="start" wrap>
+                        <Form.Item name="baseScore" label="基准分">
+                          <InputNumber min={0} />
+                        </Form.Item>
+                        <Form.Item name="pdo" label="PDO">
+                          <InputNumber min={0.01} />
+                        </Form.Item>
+                        <Form.Item name="baseOdds" label="基准赔率">
+                          <InputNumber min={0.01} />
+                        </Form.Item>
+                      </Space>
+                    ) : (
+                      <Space size={16} align="start" wrap>
+                        <Form.Item name="scoreMin" label="最低分">
+                          <InputNumber />
+                        </Form.Item>
+                        <Form.Item name="scoreMax" label="最高分">
+                          <InputNumber />
+                        </Form.Item>
+                        <Form.Item
+                          name="higherScoreForHigherPrediction"
+                          label="预测值越高评分越高"
+                          valuePropName="checked"
+                        >
+                          <Switch />
+                        </Form.Item>
+                      </Space>
+                    ))}
+                </>
+              )}
+            </>
           )}
           <Form.Item name="description" label="模型说明">
             <Input.TextArea rows={3} maxLength={512} showCount />
