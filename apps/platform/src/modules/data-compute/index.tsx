@@ -795,87 +795,6 @@ const ScorecardSection = ({ data }: { data: DataSandboxRecord }) => {
   );
 };
 
-/** 特征重要性：树模型读不纯度重要性、线性模型读系数绝对值，均需在执行侧解析模型产物后才可展示。 */
-const FeatureImportanceSection = ({
-  data,
-  modelId,
-  onComputed,
-}: {
-  data: DataSandboxRecord;
-  modelId: string;
-  onComputed: () => void;
-}) => {
-  const [computing, setComputing] = useState(false);
-  const items = reportRows(data.items);
-  const compute = async () => {
-    setComputing(true);
-    try {
-      await DataComputeApi.canvasModelFeatureImportance(modelId);
-      message.success('特征重要性计算完成');
-      onComputed();
-    } catch (e: any) {
-      message.error(e.message || '特征重要性计算失败');
-    } finally {
-      setComputing(false);
-    }
-  };
-  if (data.status === 'UNSUPPORTED') {
-    return (
-      <Alert
-        showIcon
-        type="info"
-        message={`当前算法（${data.componentCode || '-'}）没有可解释的特征权重`}
-      />
-    );
-  }
-  if (data.status !== 'AVAILABLE') {
-    return (
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <Alert
-          showIcon
-          type="info"
-          message="模型产物为 joblib 二进制，需要在执行侧解析后才能展示特征重要性"
-        />
-        <Button type="primary" loading={computing} onClick={compute}>
-          计算特征重要性
-        </Button>
-      </Space>
-    );
-  }
-  const total = items.reduce((sum, item) => sum + Number(item.importance || 0), 0);
-  return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Typography.Text type="secondary">
-        {data.source === 'COEFFICIENT'
-          ? '来源：模型系数绝对值'
-          : '来源：分裂不纯度增益'}
-        {data.computedAt ? ` · 计算时间 ${formatTime(data.computedAt)}` : ''}
-      </Typography.Text>
-      <Table
-        rowKey="feature"
-        size="small"
-        pagination={
-          items.length > 20 ? { pageSize: 20, showSizeChanger: false } : false
-        }
-        dataSource={items}
-        locale={{ emptyText: '没有获取到特征重要性' }}
-        columns={[
-          { title: '排名', width: 72, render: (_, __, index) => index + 1 },
-          { title: '特征名称', dataIndex: 'feature' },
-          { title: '重要性', dataIndex: 'importance', render: reportValue },
-          {
-            title: '占比',
-            render: (_, row) =>
-              total > 0
-                ? `${((Number(row.importance || 0) / total) * 100).toFixed(2)}%`
-                : '-',
-          },
-        ]}
-      />
-    </Space>
-  );
-};
-
 /** 树结构：导出单棵树的节点明细（分裂特征、阈值、样本数、左右子节点）。 */
 const TreeStructureSection = ({
   data,
@@ -1043,7 +962,6 @@ const WorkflowModelReport = ({
   const preprocessing = reportRows(report.preprocessingSteps);
   const evaluation = reportObject(report.evaluation);
   const testHistory = reportRows(report.testHistory);
-  const featureImportance = reportObject(report.featureImportance);
   const treeStructure = reportObject(report.treeStructure);
   const scorecard = reportObject(report.scorecard);
   return (
@@ -1092,12 +1010,6 @@ const WorkflowModelReport = ({
         />
       )}
       <ModelEvaluationSection evaluation={evaluation} />
-      <Divider orientation="left">特征重要性</Divider>
-      <FeatureImportanceSection
-        data={featureImportance}
-        modelId={modelId}
-        onComputed={onRefresh}
-      />
       {treeStructure.supported ? (
         <>
           <Divider orientation="left">树结构</Divider>

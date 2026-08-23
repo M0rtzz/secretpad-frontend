@@ -311,10 +311,6 @@ export const DataComputeApi = {
     computeGet<DataSandboxRecord[]>('/canvas/models', { canvasId }),
   canvasModelReport: (canvasModelId: string, testId = '') =>
     computeGet<DataSandboxRecord>('/canvas/models/report', { canvasModelId, testId }),
-  canvasModelFeatureImportance: (canvasModelId: string) =>
-    computePost<DataSandboxRecord>('/canvas/models/feature-importance', {
-      canvasModelId,
-    }),
   canvasModelTreeStructure: (canvasModelId: string, treeIndex = 0) =>
     computePost<DataSandboxRecord>('/canvas/models/tree-structure', {
       canvasModelId,
