@@ -72,18 +72,13 @@ export const permissionTree = [
       { title: '沙箱资源申请', key: 'sandbox:apply' },
       { title: '项目资源审核', key: 'sandbox:review' },
       { title: '数据计算', key: 'compute:use' },
-      { title: '结果管理', key: 'result:manage' },
       { title: '模型审批', key: 'model:review' },
     ],
   },
   {
     title: '安全与运维',
     key: 'group-security',
-    children: [
-      { title: '统一日志', key: 'log:view' },
-      { title: '系统对接', key: 'integration:manage' },
-      { title: '运维服务', key: 'operation:manage' },
-    ],
+    children: [{ title: '统一日志', key: 'log:view' }],
   },
   {
     title: '系统管理',
@@ -166,7 +161,6 @@ const DEFAULT_STATE: SystemManagementState = {
         'sandbox:apply',
         'sandbox:review',
         'compute:use',
-        'result:manage',
       ],
       system: true,
       createdAt: '2026-08-20T09:05:00+08:00',
@@ -174,7 +168,7 @@ const DEFAULT_STATE: SystemManagementState = {
     {
       id: 'role-developer',
       name: '数据开发人员',
-      description: '使用数据目录、数据计算、沙箱和结果管理能力',
+      description: '使用数据目录、数据计算和沙箱能力',
       permissions: [
         'workbench:view',
         'data:catalog',
@@ -182,7 +176,6 @@ const DEFAULT_STATE: SystemManagementState = {
         'data:usage-control',
         'sandbox:apply',
         'compute:use',
-        'result:manage',
       ],
       system: true,
       createdAt: '2026-08-20T09:10:00+08:00',

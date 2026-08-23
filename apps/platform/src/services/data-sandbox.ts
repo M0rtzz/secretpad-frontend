@@ -246,6 +246,8 @@ export const DataComputeApi = {
     computePost<DataSandboxRecord>('/canvases/save', data),
   deleteCanvas: (id: string, sandboxId: string) =>
     computePost<DataSandboxRecord>('/canvases/delete', { id, sandboxId }),
+  deleteCanvas: (id: string, sandboxId: string) =>
+    computePost<DataSandboxRecord>('/canvases/delete', { id, sandboxId }),
   reports: (sandboxId: string, type = '') =>
     computeGet<DataSandboxRecord[]>('/reports', { sandboxId, type }),
   // 沙箱权威库数据目录（Stage 3）：仅沙箱创建人

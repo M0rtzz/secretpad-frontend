@@ -10,7 +10,6 @@ import { DataManagerComponent } from '@/modules/data-manager/data-manager.view';
 import type { NodeVO } from '@/modules/guide-node/guide-node.service';
 import { HomeLayoutService } from '@/modules/layout/home-layout/home-layout.service';
 import { NodeService } from '@/modules/node';
-import { ResultManagerComponent } from '@/modules/result-manager/result-manager.view';
 import { getModel, Model, useModel } from '@/util/valtio-helper';
 
 import styles from './index.less';
@@ -63,7 +62,7 @@ export const NodeComponent: React.FC = () => {
         </div>
         <div className={styles.tips}>
           <img src={GirlImg} style={{ width: 36, marginRight: 5 }} />
-          <span>以下是你可管理的节点，支持查看、下载结果表</span>
+          <span>以下是你可管理的节点</span>
         </div>
       </div>
       <div className={styles.mainContent}>
@@ -80,9 +79,6 @@ export const NodeComponent: React.FC = () => {
         >
           <Tabs.TabPane tab="数据管理" tabKey="table" key="table">
             <DataManagerComponent />
-          </Tabs.TabPane>
-          <Tabs.TabPane tab="结果管理" tabKey="result" key="result">
-            <ResultManagerComponent />
           </Tabs.TabPane>
         </Tabs>
       </div>

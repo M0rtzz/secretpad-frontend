@@ -6,7 +6,6 @@ import { useLocation } from 'umi';
 import { ReactComponent as DataSource } from '@/assets/data-source.svg';
 import { ReactComponent as DataManager } from '@/assets/jiaochabiao.svg';
 import { ReactComponent as CooperativeNode } from '@/assets/join-node.svg';
-import { ReactComponent as ResultManager } from '@/assets/resultmanager.svg';
 import { CooperativeNodeListComponent } from '@/modules/cooperative-node-list';
 import { DataManagerComponent } from '@/modules/data-manager/data-manager.view';
 import { DataSourceListComponent } from '@/modules/data-source-list';
@@ -16,7 +15,6 @@ import { ManagementLayoutComponent } from '@/modules/layout/management-layout';
 import { MessageService } from '@/modules/message-center/message.service';
 import { MyNodeService } from '@/modules/my-node/my-node.service';
 import { NodeService } from '@/modules/node';
-import { ResultManagerComponent } from '@/modules/result-manager/result-manager.view';
 import { useModel } from '@/util/valtio-helper';
 
 type MenuItem = {
@@ -44,12 +42,6 @@ const defaultMenuItems: MenuItem[] = [
     icon: <Icon component={CooperativeNode} />,
     component: <CooperativeNodeListComponent />,
     key: 'connected-node',
-  },
-  {
-    label: '结果管理',
-    icon: <Icon component={ResultManager} />,
-    component: <ResultManagerComponent />,
-    key: 'result',
   },
 ];
 

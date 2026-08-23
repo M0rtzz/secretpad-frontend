@@ -385,49 +385,6 @@ export const SandboxCanvasWorkspace = () => {
               )}
             />
           </Tooltip>
-          <Divider orientation="left" plain>
-            画布中间结果
-          </Divider>
-          <List
-            size="small"
-            dataSource={view.resources.filter((r) => r.kind === 'OPERATOR')}
-            renderItem={(r) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key="preview"
-                    size="small"
-                    type="text"
-                    icon={<EyeOutlined />}
-                    onClick={() =>
-                      setPreview({
-                        tableName: String(r.tableName),
-                        title: `中间结果预览：${String(
-                          r.displayName || r.name || r.tableName,
-                        )}`,
-                      })
-                    }
-                  >
-                    预览
-                  </Button>,
-                ]}
-              >
-                <List.Item.Meta
-                  title={
-                    <span style={{ fontSize: 13 }}>
-                      {String(r.displayName || r.name || r.tableName)}
-                    </span>
-                  }
-                  description={
-                    <span style={{ fontSize: 12 }}>
-                      {String(r.tableName)}
-                      {Array.isArray(r.columns) ? ` · ${r.columns.length} 列` : ''}
-                    </span>
-                  }
-                />
-              </List.Item>
-            )}
-          />
         </div>
       ),
     },

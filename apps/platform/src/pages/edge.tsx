@@ -1,6 +1,5 @@
 import Icon from '@ant-design/icons';
 import {
-  ApiOutlined,
   ApartmentOutlined,
   AuditOutlined,
   CalculatorOutlined,
@@ -12,7 +11,6 @@ import {
   SafetyCertificateOutlined,
   SettingOutlined,
   TeamOutlined,
-  ToolOutlined,
 } from '@ant-design/icons';
 import { parse } from 'query-string';
 import { lazy, useEffect } from 'react';
@@ -21,7 +19,6 @@ import { history, useLocation } from 'umi';
 import { ReactComponent as DataManager } from '@/assets/jiaochabiao.svg';
 import { ReactComponent as CooperativeNode } from '@/assets/join-node.svg';
 import { ReactComponent as projectManager } from '@/assets/project-manager.svg';
-import { ReactComponent as ResultManager } from '@/assets/resultmanager.svg';
 import { ReactComponent as Workbench } from '@/assets/workbench.svg';
 import { CooperativeNodeListComponent } from '@/modules/cooperative-node-list';
 import { DataCatalogComponent } from '@/modules/data-catalog';
@@ -32,7 +29,6 @@ import { MessageService } from '@/modules/message-center/message.service';
 import { NodeService } from '@/modules/node';
 import { P2pProjectListComponent } from '@/modules/p2p-project-list';
 import { P2PWorkbenchComponent } from '@/modules/p2p-workbench/workbench.view';
-import { ResultManagerComponent } from '@/modules/result-manager/result-manager.view';
 import { useModel } from '@/util/valtio-helper';
 import { hasAccess, Platform } from '@/components/platform-wrapper';
 
@@ -78,20 +74,6 @@ const UnifiedLogComponent = lazy(() =>
   import('@/modules/unified-log').then(({ UnifiedLogComponent: Component }) => ({
     default: Component,
   })),
-);
-const IntegrationManagerComponent = lazy(() =>
-  import('@/modules/integration-manager').then(
-    ({ IntegrationManagerComponent: Component }) => ({
-      default: Component,
-    }),
-  ),
-);
-const OperationCenterComponent = lazy(() =>
-  import('@/modules/operation-center').then(
-    ({ OperationCenterComponent: Component }) => ({
-      default: Component,
-    }),
-  ),
 );
 const UserManagementComponent = lazy(() =>
   import('@/modules/system-management').then(
@@ -184,12 +166,6 @@ const menuItems: {
     key: 'connected-node',
   },
   {
-    label: '结果管理',
-    icon: <Icon component={ResultManager} />,
-    component: <ResultManagerComponent />,
-    key: 'result',
-  },
-  {
     label: '模型审批',
     icon: <SafetyCertificateOutlined />,
     component: <ModelApprovalComponent />,
@@ -225,18 +201,6 @@ const menuItems: {
         component: <TenantManagementComponent />,
       },
     ],
-  },
-  {
-    label: '系统对接',
-    icon: <ApiOutlined />,
-    component: <IntegrationManagerComponent />,
-    key: 'integration-manager',
-  },
-  {
-    label: '运维服务',
-    icon: <ToolOutlined />,
-    component: <OperationCenterComponent />,
-    key: 'operation-center',
   },
 ];
 const EdgePage = () => {
