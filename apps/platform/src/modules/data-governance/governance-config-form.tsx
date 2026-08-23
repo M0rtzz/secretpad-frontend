@@ -331,6 +331,7 @@ export const GovernanceConfigFields = ({
               label="自定义抽样代码"
               rules={[{ required: true, message: '请输入自定义抽样代码' }]}
               tooltip="Python 脚本，参数：--input 输入 CSV、--output 输出 CSV、--params 参数 JSON；抽样结果写入 --output"
+              extra="自定义抽样的输出由脚本自行决定，下方字段脱敏配置不会参与执行"
             >
               <Input.TextArea
                 rows={10}
@@ -454,8 +455,7 @@ export const GovernanceConfigFields = ({
         </>
       )}
 
-      {/* 自定义抽样由脚本自行处理输出，内置脱敏规则不参与执行，故不展示 */}
-      {enableMasking && method !== 'CUSTOM' && (
+      {enableMasking && (
         <Form.List name="maskingRows">
           {(fields, { add, remove }) => (
             <>

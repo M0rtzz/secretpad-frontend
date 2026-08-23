@@ -1,4 +1,4 @@
-import { Input, Form, Drawer, Button, Space, Select, Alert } from 'antd';
+import { Input, Form, Drawer, Button, Space, Select, Alert, Modal } from 'antd';
 import classnames from 'classnames';
 import { parse } from 'query-string';
 import React from 'react';
@@ -43,7 +43,16 @@ export const P2PCreateProjectModal = ({
 
   const handleOk = () => {
     form.validateFields().then(async (value) => {
-      await viewInstance.createProject(value);
+      try {
+        await viewInstance.createProject(value);
+      } catch (error) {
+        // 项目重名等后端校验失败在此弹窗提示，抽屉保持打开以便直接修改
+        Modal.error({
+          title: '项目创建失败',
+          content: (error as Error).message || '请稍后重试',
+        });
+        return;
+      }
       handleClose();
       onOk && onOk();
     });

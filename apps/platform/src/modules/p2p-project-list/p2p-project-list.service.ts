@@ -1,4 +1,4 @@
-import { message } from 'antd';
+import { message, Modal } from 'antd';
 import { parse } from 'query-string';
 
 import { isP2PWorkbench } from '@/components/platform-wrapper';
@@ -48,11 +48,14 @@ export class P2pProjectListService extends Model {
     };
     message.loading({ content: '更新中', key: item.projectId });
     const { status } = await API.P2PProjectController.updateProject(params);
+    message.destroy(item.projectId);
     if (status && status.code === 0) {
       await this.getListProject();
       message.success('项目名称修改成功');
+      return;
     }
-    message.destroy(item.projectId);
+    // 项目重名等校验失败需明确提示，否则编辑弹框关闭后无任何反馈
+    Modal.error({ title: '项目信息修改失败', content: status?.msg || '请稍后重试' });
   };
 
   /**

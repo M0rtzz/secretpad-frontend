@@ -25,7 +25,6 @@ import { ReactComponent as ResultManager } from '@/assets/resultmanager.svg';
 import { ReactComponent as Workbench } from '@/assets/workbench.svg';
 import { CooperativeNodeListComponent } from '@/modules/cooperative-node-list';
 import { DataCatalogComponent } from '@/modules/data-catalog';
-import { UsageControlComponent } from '@/modules/usage-control';
 import { HomeLayout } from '@/modules/layout/home-layout';
 import { HomeLayoutService } from '@/modules/layout/home-layout/home-layout.service';
 import { ManagementLayoutComponent } from '@/modules/layout/management-layout';
@@ -150,12 +149,6 @@ const menuItems: {
         key: 'data-governance',
         icon: <DeploymentUnitOutlined />,
         component: <DataGovernanceComponent />,
-      },
-      {
-        label: '使用控制',
-        key: 'usage-control',
-        icon: <SafetyCertificateOutlined />,
-        component: <UsageControlComponent />,
       },
     ],
   },

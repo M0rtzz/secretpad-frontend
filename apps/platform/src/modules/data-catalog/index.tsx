@@ -10,6 +10,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Upload,
   Segmented,
   Tabs,
@@ -23,6 +24,16 @@ import { MvpPage, RefreshButton, formatTime } from '@/modules/data-sandbox-mvp/c
 import { DataAssetApi, DataSandboxRecord, responseData } from '@/services/data-sandbox';
 
 import { DataAssetPreviewTable } from './preview-table';
+
+/** 与后端 AssetTimeWindow 一致的访问时间窗判定：边界为空表示不限制。 */
+const withinAccessWindow = (row: DataSandboxRecord) => {
+  const now = dayjs();
+  const start = row.access_start ? dayjs(row.access_start) : undefined;
+  const end = row.access_end ? dayjs(row.access_end) : undefined;
+  if (start?.isValid() && now.isBefore(start)) return false;
+  if (end?.isValid() && now.isAfter(end)) return false;
+  return true;
+};
 
 export const DataCatalogComponent = () => {
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
@@ -419,9 +430,17 @@ export const DataCatalogComponent = () => {
             width: 170,
             render: (_: unknown, row: DataSandboxRecord) => (
               <Space>
-                <Button type="link" onClick={() => openPreview(row)}>
-                  预览
-                </Button>
+                {withinAccessWindow(row) ? (
+                  <Button type="link" onClick={() => openPreview(row)}>
+                    预览
+                  </Button>
+                ) : (
+                  <Tooltip title="已超过访问截止时间，不可预览">
+                    <Button type="link" disabled>
+                      预览
+                    </Button>
+                  </Tooltip>
+                )}
                 {row.owned && (
                   <Popconfirm
                     title="确定删除该数据？若已挂载到项目，将提交项目全节点审批。"
