@@ -10,6 +10,7 @@ export type ManagedUser = {
   status: ManagedUserStatus;
   lastLoginAt?: string;
   createdAt: string;
+  systemAccount: boolean;
 };
 
 export type ManagedUserOption = {

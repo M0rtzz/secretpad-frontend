@@ -66,7 +66,9 @@ export const UserManagementComponent = () => {
         !normalized ||
         user.account.toLowerCase().includes(normalized) ||
         user.displayName.toLowerCase().includes(normalized);
-      return matchesKeyword && (!statusFilter || user.status === statusFilter);
+      return (
+        matchesKeyword && (!statusFilter || user.status === statusFilter)
+      );
     });
   }, [keyword, statusFilter, users]);
 
@@ -196,7 +198,10 @@ export const UserManagementComponent = () => {
             render: (value: string, row: ManagedUser) => (
               <>
                 <span className={styles.cellTitle}>{value}</span>
-                <span className={styles.cellDescription}>{row.displayName}</span>
+                <span className={styles.cellDescription}>
+                  {row.displayName}
+                  {row.systemAccount && <Tag color="gold">系统管理员</Tag>}
+                </span>
               </>
             ),
           },
@@ -205,7 +210,9 @@ export const UserManagementComponent = () => {
             dataIndex: 'status',
             width: 100,
             render: (value: ManagedUserStatus) => (
-              <Tag color={accountStatus[value].color}>{accountStatus[value].label}</Tag>
+              <Tag color={accountStatus[value].color}>
+                {accountStatus[value].label}
+              </Tag>
             ),
           },
           {
@@ -225,37 +232,42 @@ export const UserManagementComponent = () => {
             key: 'actions',
             fixed: 'right' as const,
             width: 310,
-            render: (_: unknown, row: ManagedUser) => (
-              <Space size={0}>
-                <Button type="link" onClick={() => openEdit(row)}>
-                  编辑
-                </Button>
-                <Popconfirm
-                  title={
-                    '确定' + (row.status === 'ENABLED' ? '停用' : '启用') + '该用户？'
-                  }
-                  onConfirm={() => toggleUser(row)}
-                >
-                  <Button type="link">
-                    {row.status === 'ENABLED' ? '停用' : '启用'}
+            render: (_: unknown, row: ManagedUser) =>
+              row.systemAccount ? (
+                <Tag>系统账户</Tag>
+              ) : (
+                <Space size={0}>
+                  <Button type="link" onClick={() => openEdit(row)}>
+                    编辑
                   </Button>
-                </Popconfirm>
-                <Popconfirm
-                  title={`确定将密码重置为 ${INITIAL_PASSWORD}？`}
-                  onConfirm={() => resetPassword(row)}
-                >
-                  <Button type="link">重置密码</Button>
-                </Popconfirm>
-                <Popconfirm
-                  title="删除后用户将无法登录，确定继续？"
-                  onConfirm={() => deleteUser(row)}
-                >
-                  <Button danger type="link">
-                    删除
-                  </Button>
-                </Popconfirm>
-              </Space>
-            ),
+                  <Popconfirm
+                    title={
+                      '确定' +
+                      (row.status === 'ENABLED' ? '停用' : '启用') +
+                      '该用户？'
+                    }
+                    onConfirm={() => toggleUser(row)}
+                  >
+                    <Button type="link">
+                      {row.status === 'ENABLED' ? '停用' : '启用'}
+                    </Button>
+                  </Popconfirm>
+                  <Popconfirm
+                    title={`确定将密码重置为 ${INITIAL_PASSWORD}？`}
+                    onConfirm={() => resetPassword(row)}
+                  >
+                    <Button type="link">重置密码</Button>
+                  </Popconfirm>
+                  <Popconfirm
+                    title="删除后用户将无法登录，确定继续？"
+                    onConfirm={() => deleteUser(row)}
+                  >
+                    <Button danger type="link">
+                      删除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ),
           },
         ]}
       />
@@ -285,7 +297,11 @@ export const UserManagementComponent = () => {
               },
             ]}
           >
-            <Input disabled={!!editing} maxLength={16} placeholder="请输入登录账户名" />
+            <Input
+              disabled={!!editing}
+              maxLength={16}
+              placeholder="请输入登录账户名"
+            />
           </Form.Item>
           <Form.Item
             name="displayName"
