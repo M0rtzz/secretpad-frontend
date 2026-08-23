@@ -18,12 +18,34 @@ import {
 import { UploadOutlined, ApiOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
+import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { MvpPage, RefreshButton, formatTime } from '@/modules/data-sandbox-mvp/common';
 import { DataAssetApi, DataSandboxRecord, responseData } from '@/services/data-sandbox';
 
 import { DataAssetPreviewTable } from './preview-table';
+
+const validityRowStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  lineHeight: '24px',
+};
+
+const validityLabelStyle: CSSProperties = {
+  flex: 'none',
+  color: 'rgba(0, 0, 0, 0.45)',
+  whiteSpace: 'nowrap',
+};
+
+const validityValueStyle: CSSProperties = {
+  flex: 1,
+  whiteSpace: 'nowrap',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+const validityActionStyle: CSSProperties = { flex: 'none', padding: 0, height: 'auto' };
 
 /** 与后端 AssetTimeWindow 一致的访问时间窗判定：边界为空表示不限制。 */
 const withinAccessWindow = (row: DataSandboxRecord) => {
@@ -354,7 +376,7 @@ export const DataCatalogComponent = () => {
         rowKey="id"
         loading={loading}
         dataSource={items}
-        scroll={{ x: 1240 }}
+        scroll={{ x: 1280 }}
         columns={[
           { title: '数据名称', dataIndex: 'name', fixed: 'left', width: 180 },
           {
@@ -394,39 +416,33 @@ export const DataCatalogComponent = () => {
           },
           {
             title: '有效期',
-            width: 290,
-            render: (_: unknown, row: DataSandboxRecord) => (
-              <Space direction="vertical" size={0}>
-                <Space size={4}>
-                  <span>
-                    访问截止时间：
-                    {row.access_end ? formatTime(row.access_end) : '未设置'}
+            width: 330,
+            render: (_: unknown, row: DataSandboxRecord) =>
+              (
+                [
+                  { field: 'accessEnd', label: '访问截止时间', value: row.access_end },
+                  {
+                    field: 'validUntil',
+                    label: '使用截止时间',
+                    value: row.control_valid_until,
+                  },
+                ] as const
+              ).map((item) => (
+                <div key={item.field} style={validityRowStyle}>
+                  <span style={validityLabelStyle}>{item.label}</span>
+                  <span style={validityValueStyle}>
+                    {item.value ? formatTime(item.value) : '未设置'}
                   </span>
                   <Button
                     type="link"
                     size="small"
-                    onClick={() => openValidityEdit(row, 'accessEnd')}
+                    style={validityActionStyle}
+                    onClick={() => openValidityEdit(row, item.field)}
                   >
                     更改
                   </Button>
-                </Space>
-                <Space size={4}>
-                  <span>
-                    使用截止时间：
-                    {row.control_valid_until
-                      ? formatTime(row.control_valid_until)
-                      : '未设置'}
-                  </span>
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => openValidityEdit(row, 'validUntil')}
-                  >
-                    更改
-                  </Button>
-                </Space>
-              </Space>
-            ),
+                </div>
+              )),
           },
           {
             title: '操作',
