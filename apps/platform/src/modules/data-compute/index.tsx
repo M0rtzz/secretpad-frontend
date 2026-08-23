@@ -383,8 +383,8 @@ export const SandboxWorkspaceComponent = () => {
   const menu = [
     { key: 'directory', icon: <TableOutlined />, label: '沙箱数据目录' },
     { key: 'dev', icon: <CodeOutlined />, label: '沙箱方式开发' },
-    { key: 'algorithm', icon: <FundOutlined />, label: '自定义算法' },
     { key: 'visual', icon: <PartitionOutlined />, label: '可视化建模' },
+    { key: 'algorithm', icon: <FundOutlined />, label: '自定义算法' },
   ];
   const page =
     workspace === 'dev' ? (
