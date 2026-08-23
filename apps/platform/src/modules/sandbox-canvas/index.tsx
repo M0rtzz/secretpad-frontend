@@ -33,6 +33,8 @@ import { parse } from 'query-string';
 import { useEffect, useRef, useState } from 'react';
 import { history } from 'umi';
 
+import { Platform } from '@/components/platform-wrapper';
+import { LoginService } from '@/modules/login/login.service';
 import {
   DataComputeApi,
   responseData,
@@ -77,6 +79,7 @@ const eventHandler = new SandboxGraphEventHandler();
 
 export const SandboxCanvasWorkspace = () => {
   const view = useModel(SandboxCanvasView);
+  const loginService = useModel(LoginService);
   const containerRef = useRef<HTMLDivElement>(null);
   const { computeCanvasId } = parse(window.location.search) as {
     computeCanvasId?: string;
@@ -87,13 +90,21 @@ export const SandboxCanvasWorkspace = () => {
   const [modelCandidates, setModelCandidates] = useState<DataSandboxRecord[]>([]);
   const [modelForm] = Form.useForm();
 
-  const goBack = () => {
-    const current = new URLSearchParams(window.location.search);
-    current.set('tab', 'data-compute');
-    current.set('workspace', 'visual');
-    current.set('projectId', view.projectId);
-    current.set('sandboxId', view.sandboxId);
-    history.push(`/edge?${current.toString()}`);
+  const goBack = async () => {
+    const userInfo = await loginService.getUserInfo();
+    // /edge 路由要求 URL 携带 ownerId，缺失会被鉴权 wrapper 重定向到登录页
+    if (userInfo?.platformType !== Platform.AUTONOMY || !userInfo?.ownerId) {
+      history.push('/home?tab=project-management');
+      return;
+    }
+    const target = new URLSearchParams({
+      ownerId: userInfo.ownerId,
+      tab: 'data-compute',
+      workspace: 'visual',
+      projectId: view.projectId,
+      sandboxId: view.sandboxId,
+    });
+    history.push(`/edge?${target.toString()}`);
   };
 
   // 初始化画布：canvasId 变化时重建 X6 graph（请求服务指向 data-compute canvas 端点）
