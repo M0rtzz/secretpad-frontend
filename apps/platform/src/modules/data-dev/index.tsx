@@ -16,7 +16,6 @@ import {
   Table,
   Tabs,
   Tag,
-  Timeline,
   Tooltip,
   Upload,
 } from 'antd';
@@ -88,14 +87,14 @@ const fileToBase64 = (file: File) =>
   });
 
 /** 渲染 header[] + rows[][] 预览表。 */
-const renderPreviewTable = (preview: DataSandboxRecord) => {
+const renderPreviewTable = (preview: DataSandboxRecord, showRowCount = true) => {
   const header = (preview.header || []) as string[];
   const rows = (preview.rows || []) as string[][];
   if (!header.length) return null;
   return (
     <div style={{ margin: '8px 0' }}>
       <Space wrap size={4} style={{ marginBottom: 8 }}>
-        <Tag>行数 {preview.sourceRows ?? rows.length}</Tag>
+        {showRowCount && <Tag>行数 {preview.sourceRows ?? rows.length}</Tag>}
         <Tag>表头 {header.join(', ')}</Tag>
       </Space>
       <Table
@@ -833,11 +832,6 @@ export const DataDevComponent = () => {
                         </Tooltip>
                       ),
                     },
-                    {
-                      title: '行数',
-                      render: (_: unknown, row: DataSandboxRecord) =>
-                        `${row.source_rows} → ${row.result_rows}`,
-                    },
                     { title: '提交人', dataIndex: 'created_by' },
                     { title: '提交时间', dataIndex: 'created_at', render: formatTime },
                     {
@@ -1478,28 +1472,6 @@ export const DataDevComponent = () => {
             {detailItem.retry_count > 0 && (
               <div>重试次数：{detailItem.retry_count}</div>
             )}
-            <strong>血缘</strong>
-            {detailItem.lineage?.length ? (
-              <Timeline
-                items={(detailItem.lineage as DataSandboxRecord[]).map((item) => ({
-                  color: 'blue',
-                  children: (
-                    <>
-                      <strong>{item.op_type}</strong>
-                      <div>
-                        {item.source_node_id}/{item.source_datatable_id} →{' '}
-                        {item.target_node_id}/{item.target_datatable_id}
-                      </div>
-                      <div>
-                        {item.created_by} · {formatTime(item.created_at)}
-                      </div>
-                    </>
-                  ),
-                }))}
-              />
-            ) : (
-              <div style={{ color: '#888' }}>无血缘（DEV 调试运行不产生血缘）</div>
-            )}
             {detailItem.content_snapshot && (
               <>
                 <strong>脚本快照</strong>
@@ -1601,16 +1573,13 @@ export const DataDevComponent = () => {
                 <Tag color={resultItem.runMode === 'DEV' ? 'cyan' : 'orange'}>
                   {runModeLabels[resultItem.runMode] || resultItem.runMode}
                 </Tag>
-                <Tag>
-                  源 {resultItem.sourceRows} 行 → 结果 {resultItem.resultRows} 行
-                </Tag>
                 {resultItem.resultDatatableId && (
                   <Tag color="green">
                     {resultItem.resultNodeId}/{resultItem.resultDatatableId}
                   </Tag>
                 )}
               </Space>
-              {renderPreviewTable(resultItem.preview)}
+              {renderPreviewTable(resultItem.preview, false)}
               {resultItem.runMode === 'PROD' && (
                 <Alert
                   type="warning"

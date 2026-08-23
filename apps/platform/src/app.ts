@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 request.interceptors.request.use((url, options) => {
   const traceId = uuidv4(); // 生成唯一的 traceId
   const token = localStorage.getItem('User-Token') || '';
+  const isFormData =
+    typeof FormData !== 'undefined' && options.data instanceof FormData;
   return {
     url: `${url}`,
     options: {
@@ -13,7 +15,7 @@ request.interceptors.request.use((url, options) => {
       credentials: 'include',
       interceptors: true,
       headers: {
-        'Content-Type': 'application/json',
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         'User-Token': token,
         'Trace-Id': traceId,
       },
