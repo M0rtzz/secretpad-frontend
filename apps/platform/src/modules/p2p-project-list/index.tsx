@@ -352,15 +352,6 @@ export const P2pProjectListComponent: React.FC = () => {
                               }
                             </span>
                           </div>
-                          <div className={styles.task}>
-                            <div className={styles.titleName}>任务数</div>
-                            <div
-                              className={styles.count}
-                              onClick={handleOpenProjectDetail(item, TabKey.TASKS)}
-                            >
-                              {item.jobCount}
-                            </div>
-                          </div>
                         </div>
                       )}
 

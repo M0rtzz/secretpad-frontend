@@ -52,7 +52,7 @@ export class P2pProjectDetailService extends Model {
         this.voteInstNodeList = [];
         return this.voteInstNodeList;
       }
-      this.voteInstNodeList = data || [];
+      this.voteInstNodeList = Array.isArray(data) ? data : data ? [data] : [];
       return this.voteInstNodeList;
     } catch (e) {
       message.error(e);
