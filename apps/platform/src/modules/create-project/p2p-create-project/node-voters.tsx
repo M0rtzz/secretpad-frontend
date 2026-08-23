@@ -1,5 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Button, Form, Select, Space, Tooltip } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
+import { Form, Select, Space } from 'antd';
 import styles from './index.less';
 import { AddNodeTag } from '../add-node-tag';
 import { useModel } from '@/util/valtio-helper';
@@ -53,7 +53,7 @@ export const NodeVoters = () => {
 
   return (
     <Form.List name="nodeVoters" initialValue={[{}]}>
-      {(fields, { add, remove }) => (
+      {(fields, { remove }) => (
         <Space direction="vertical">
           <div>
             {fields.map(({ key, name, ...restField }) => (
@@ -102,18 +102,6 @@ export const NodeVoters = () => {
                 )}
               </Space>
             ))}
-          </div>
-          <div>
-            <Tooltip placement="right" title={fields.length >= 5 ? '最多可建5组' : ''}>
-              <Button
-                disabled={fields.length >= 5}
-                onClick={() => add()}
-                icon={<PlusOutlined />}
-                className={styles.addBtn}
-              >
-                新增一组节点
-              </Button>
-            </Tooltip>
           </div>
         </Space>
       )}

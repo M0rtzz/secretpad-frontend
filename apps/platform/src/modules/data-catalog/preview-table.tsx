@@ -100,7 +100,7 @@ export const DataAssetPreviewTable = ({
       )}
       {preview?.asset?.name && (
         <Typography.Text type="secondary">
-          数据集：{preview.asset.name} 预览行数：{rows.length}
+          数据集：{preview.asset.name}
         </Typography.Text>
       )}
       {isImage ? (

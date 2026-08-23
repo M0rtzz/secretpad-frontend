@@ -33,7 +33,6 @@ export const P2PCreateProjectModal = ({
   React.useEffect(() => {
     if (visible && ownerId) {
       viewInstance.getNodeList();
-      viewInstance.getAssetList();
     }
   }, [ownerId, visible]);
 
@@ -134,19 +133,6 @@ export const P2PCreateProjectModal = ({
               { value: 'FUNCTION_ECOSYSTEM', label: '函数与生态库管理' },
               { value: 'JAR', label: 'JAR 计算' },
             ]}
-          />
-        </Form.Item>
-        <Form.Item
-          label="关联数据资源（可选）"
-          name="assetIds"
-          tooltip="可多选本节点数据目录中的源数据或抽样脱敏数据；源数据只能用于项目内可视和治理，不能直接进入沙箱"
-        >
-          <Select
-            mode="multiple"
-            showSearch
-            optionFilterProp="label"
-            placeholder="从数据目录选择"
-            options={viewInstance.assetListOptions}
           />
         </Form.Item>
         <Form.Item label="节点信息" className={styles.formBoldLabelItem} required>

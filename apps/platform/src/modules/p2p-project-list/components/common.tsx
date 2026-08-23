@@ -4,7 +4,6 @@ import { Select, Radio, Modal, Button, Space } from 'antd';
 import { parse } from 'query-string';
 import React from 'react';
 
-import { getPadMode } from '@/components/platform-wrapper';
 import { useModel } from '@/util/valtio-helper';
 
 import { P2pProjectListService } from '../p2p-project-list.service';
@@ -30,7 +29,7 @@ export enum RadioGroupState {
 
 export enum SelectProjectState {
   'ALL' = 'all',
-  'REVIEWING' = 'REVIEWING',
+  'NORMAL' = 'NORMAL',
   'ARCHIVED' = 'ARCHIVED',
 }
 
@@ -61,8 +60,8 @@ export const RadioGroup = (props: {
 };
 
 const selectOptions = [
-  { value: SelectProjectState.ALL, label: '全部状态' },
-  { value: SelectProjectState.REVIEWING, label: '进行中' },
+  { value: SelectProjectState.ALL, label: '全部' },
+  { value: SelectProjectState.NORMAL, label: '正常' },
   { value: SelectProjectState.ARCHIVED, label: '已归档' },
 ];
 
@@ -77,32 +76,6 @@ export const ProjectStateSelect = (props: {
       value={props.value}
       onChange={(e: SelectProjectState) => props.onChange(e)}
       options={selectOptions}
-    />
-  );
-};
-
-const computeModeSelectOptions = [
-  { value: ComputeModeType.ALL, label: '全部计算模式' },
-  { value: ComputeModeType.MPC, label: '管道模式' },
-  { value: ComputeModeType.TEE, label: '枢纽模式' },
-];
-const ModeSelect = {
-  TEE: computeModeSelectOptions.filter((item) => item.value !== ComputeModeType.MPC),
-  MPC: computeModeSelectOptions.filter((item) => item.value !== ComputeModeType.TEE),
-  'ALL-IN-ONE': computeModeSelectOptions,
-};
-
-export const ProjectComputeModeSelect = (props: {
-  onChange: (e: ComputeModeType) => void;
-  value: ComputeModeType;
-}) => {
-  return (
-    <Select
-      style={{ width: 180 }}
-      value={props.value}
-      defaultValue={ComputeModeType.ALL}
-      onChange={(e: ComputeModeType) => props.onChange(e)}
-      options={ModeSelect[getPadMode() || ('MPC' as keyof typeof ModeSelect)]}
     />
   );
 };

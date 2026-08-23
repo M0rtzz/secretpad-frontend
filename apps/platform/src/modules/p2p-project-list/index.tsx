@@ -2,6 +2,7 @@ import {
   CloudServerOutlined,
   DatabaseOutlined,
   EditOutlined,
+  RedoOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
 import { Empty, Form, Modal, Select, Table, Tag, message } from 'antd';
@@ -38,9 +39,7 @@ import {
   checkAllApproved,
 } from '../p2p-project-list/components/common';
 import {
-  ComputeModeType,
   P2pProjectButtons,
-  ProjectComputeModeSelect,
   ProjectStateSelect,
   ProjectStatus,
   RadioGroup,
@@ -143,11 +142,7 @@ export const P2pProjectListComponent: React.FC = () => {
 
   useEffect(() => {
     setSearchInput('');
-  }, [
-    projectListModel.radioFilterState,
-    projectListModel.computeMode,
-    projectListModel.selectState,
-  ]);
+  }, [projectListModel.radioFilterState, projectListModel.selectState]);
 
   const handleOpenProjectDetail = (item: API.ProjectVO, tabKey: string) => {
     return () => {
@@ -187,19 +182,29 @@ export const P2pProjectListComponent: React.FC = () => {
                 value={projectListModel.radioFilterState}
                 onChange={projectListModel.changefilterState}
               />
-              <ProjectComputeModeSelect
-                onChange={projectListModel.onSelectProject}
-                value={projectListModel.computeMode}
-              />
               <ProjectStateSelect
                 onChange={projectListModel.changeProjectState}
                 value={projectListModel.selectState}
               />
             </Space>
           )}
-          <Button type="primary" onClick={handleCreateProject}>
-            新建项目
-          </Button>
+          <Space>
+            <Button
+              icon={<RedoOutlined />}
+              loading={projectListModel.projectListService.projectListLoading}
+              onClick={() => {
+                p2pProjectService.getListProject();
+                DataSandboxApi.sandboxes({}).then((response) =>
+                  setSandboxEnvironments(responseData(response, [])),
+                );
+              }}
+            >
+              刷新
+            </Button>
+            <Button type="primary" onClick={handleCreateProject}>
+              新建项目
+            </Button>
+          </Space>
           <P2PCreateProjectModal
             visible={projectListModel.showCreateProjectModel}
             close={() => {
@@ -525,30 +530,12 @@ export const P2pProjectListComponent: React.FC = () => {
               render: (value: string) => value || '暂无描述',
             },
             {
-              title: '状态',
-              dataIndex: 'status',
-              width: 110,
-              render: (value: string) => <Tag>{value || '-'}</Tag>,
-            },
-            {
-              title: '环境镜像',
-              dataIndex: 'image_name',
-              width: 150,
-              render: (value: string) => value || '-',
-            },
-            {
               title: '资源规格',
               width: 230,
               render: (_: unknown, row: DataSandboxRecord) =>
                 `${row.cpu_cores || 0}C / ${row.memory_gb || 0}GB / GPU ${
                   row.gpu_count || 0
                 } / ${row.storage_gb || 0}GB`,
-            },
-            {
-              title: '网络策略',
-              dataIndex: 'network_policy',
-              width: 140,
-              render: (value: string) => value || '-',
             },
             {
               title: '到期时间',
@@ -637,8 +624,6 @@ export class ProjectListModel extends Model {
 
   radioFilterState = RadioGroupState.ALL;
   selectState = SelectProjectState.ALL;
-  computeMode = ComputeModeType.ALL;
-
   changefilterState = (value: RadioGroupState) => {
     this.resetFilters();
     this.radioFilterState = value;
@@ -667,8 +652,8 @@ export class ProjectListModel extends Model {
           return i;
         } else if (value === SelectProjectState.ARCHIVED) {
           return i.status && i.status === SelectProjectState.ARCHIVED;
-        } else if (value === SelectProjectState.REVIEWING) {
-          return i.status && i.status === SelectProjectState.REVIEWING;
+        } else if (value === SelectProjectState.NORMAL) {
+          return i.status && i.status !== SelectProjectState.ARCHIVED;
         }
       });
   };
@@ -681,24 +666,7 @@ export class ProjectListModel extends Model {
       });
   };
 
-  onSelectProject = (e: string) => {
-    this.resetFilters();
-    this.computeMode = e as ComputeModeType;
-    this.projectListService.displayProjectList =
-      this.projectListService.projectList.filter((i) => {
-        if (e === ComputeModeType.ALL) {
-          return i;
-        } else if (e === ComputeModeType.TEE) {
-          return i.computeMode && i.computeMode.indexOf(ComputeModeType.TEE) >= 0;
-        } else if (e === ComputeModeType.MPC) {
-          // 兼容除tee外的
-          return i.computeMode && !(i.computeMode.indexOf(ComputeModeType.TEE) >= 0);
-        }
-      });
-  };
-
   resetFilters = () => {
-    this.computeMode = ComputeModeType.ALL;
     this.radioFilterState = RadioGroupState.ALL;
     this.selectState = SelectProjectState.ALL;
   };
