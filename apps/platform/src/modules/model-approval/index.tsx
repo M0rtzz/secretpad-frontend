@@ -31,6 +31,9 @@ const statusLabels: Record<string, string> = {
   APPROVED: '已通过',
   REJECTED: '已驳回',
   CANCELLED: '已撤回',
+  EXECUTING: '处理中',
+  COMPLETED: '已完成',
+  FAILED: '处理失败',
 };
 
 const statusColors: Record<string, string> = {
@@ -38,6 +41,9 @@ const statusColors: Record<string, string> = {
   APPROVED: 'success',
   REJECTED: 'error',
   CANCELLED: 'default',
+  EXECUTING: 'processing',
+  COMPLETED: 'success',
+  FAILED: 'error',
 };
 
 /** 解析在线调试输入：支持 JSON 数组 或 {"rows": [...]}。 */
