@@ -270,7 +270,6 @@ export const ModelCenterComponent = ({ context }: { context: DataSandboxRecord }
     try {
       const detail = responseData(await DataModelApi.apiDetail(row.id), {});
       setDetailItem(detail);
-      setDebugResult(undefined);
       setDetailOpen(true);
       updateForm.setFieldsValue({
         authorizedUsers: Array.isArray(detail.authorized_users)
