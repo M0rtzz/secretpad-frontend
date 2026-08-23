@@ -636,11 +636,17 @@ const ModelEvaluationSection = ({ evaluation }: { evaluation: DataSandboxRecord 
     precision: 'Precision',
     recall: 'Recall',
     f1: 'F1',
+    auc: 'AUC',
     mae: 'MAE',
     rmse: 'RMSE',
     r2: 'R²',
     samples: '评估样本数',
+    totalRows: '结果总行数',
     classes: '类别集合',
+    clusterCount: '簇数量',
+    clusterDistribution: '各簇样本数',
+    clusterRatio: '各簇占比',
+    distributionSampleRows: '分布统计样本行数',
   };
   const metricItems = Object.entries(metrics)
     .filter(([key]) => !['metricType', 'confusionMatrix'].includes(key))
@@ -659,13 +665,49 @@ const ModelEvaluationSection = ({ evaluation }: { evaluation: DataSandboxRecord 
       } / TN ${confusion.tn ?? 0}`,
     });
   }
+  const sourceLabels: Record<string, string> = {
+    MODEL_TEST: '模型测试报告',
+    CANVAS_EVALUATION_NODE: '画布评估组件',
+    AUTO_EVALUATION: '训练结果自动评估',
+  };
+  const scopeHint =
+    evaluation.metricsScope === 'AUTO'
+      ? '该工作流没有配置模型评估组件，以下指标由训练结果按模型任务类型自动计算。'
+      : evaluation.source === 'CANVAS_EVALUATION_NODE'
+      ? '以下指标来自工作流中配置的模型评估组件，按其配置的字段展示。'
+      : '';
+  const evaluationNode = reportObject(evaluation.evaluationNode);
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {scopeHint ? <Alert showIcon type="info" message={scopeHint} /> : null}
       <Descriptions
         bordered
         size="small"
         column={2}
         items={[
+          {
+            key: 'source',
+            label: '指标来源',
+            children:
+              sourceLabels[String(evaluation.source || '')] ||
+              String(evaluation.source || '-'),
+          },
+          {
+            key: 'metricType',
+            label: '评估类型',
+            children: String(evaluation.metricType || metrics.metricType || '-'),
+          },
+          ...(evaluationNode.componentName
+            ? [
+                {
+                  key: 'node',
+                  label: '评估组件',
+                  children: `${evaluationNode.componentName}（${
+                    evaluationNode.componentCode || '-'
+                  }）`,
+                },
+              ]
+            : []),
           { key: 'test', label: '测试批次', children: evaluation.testId || '-' },
           { key: 'mode', label: '运行模式', children: evaluation.runMode || '-' },
           {
@@ -713,12 +755,235 @@ const ModelEvaluationSection = ({ evaluation }: { evaluation: DataSandboxRecord 
   );
 };
 
+/** 特征重要性：树模型读不纯度重要性、线性模型读系数绝对值，均需在执行侧解析模型产物后才可展示。 */
+const FeatureImportanceSection = ({
+  data,
+  modelId,
+  onComputed,
+}: {
+  data: DataSandboxRecord;
+  modelId: string;
+  onComputed: () => void;
+}) => {
+  const [computing, setComputing] = useState(false);
+  const items = reportRows(data.items);
+  const compute = async () => {
+    setComputing(true);
+    try {
+      await DataComputeApi.canvasModelFeatureImportance(modelId);
+      message.success('特征重要性计算完成');
+      onComputed();
+    } catch (e: any) {
+      message.error(e.message || '特征重要性计算失败');
+    } finally {
+      setComputing(false);
+    }
+  };
+  if (data.status === 'UNSUPPORTED') {
+    return (
+      <Alert
+        showIcon
+        type="info"
+        message={`当前算法（${data.componentCode || '-'}）没有可解释的特征权重`}
+      />
+    );
+  }
+  if (data.status !== 'AVAILABLE') {
+    return (
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Alert
+          showIcon
+          type="info"
+          message="模型产物为 joblib 二进制，需要在执行侧解析后才能展示特征重要性"
+        />
+        <Button type="primary" loading={computing} onClick={compute}>
+          计算特征重要性
+        </Button>
+      </Space>
+    );
+  }
+  const total = items.reduce((sum, item) => sum + Number(item.importance || 0), 0);
+  return (
+    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <Typography.Text type="secondary">
+        {data.source === 'COEFFICIENT'
+          ? '来源：模型系数绝对值'
+          : '来源：分裂不纯度增益'}
+        {data.computedAt ? ` · 计算时间 ${formatTime(data.computedAt)}` : ''}
+      </Typography.Text>
+      <Table
+        rowKey="feature"
+        size="small"
+        pagination={
+          items.length > 20 ? { pageSize: 20, showSizeChanger: false } : false
+        }
+        dataSource={items}
+        locale={{ emptyText: '没有获取到特征重要性' }}
+        columns={[
+          { title: '排名', width: 72, render: (_, __, index) => index + 1 },
+          { title: '特征名称', dataIndex: 'feature' },
+          { title: '重要性', dataIndex: 'importance', render: reportValue },
+          {
+            title: '占比',
+            render: (_, row) =>
+              total > 0
+                ? `${((Number(row.importance || 0) / total) * 100).toFixed(2)}%`
+                : '-',
+          },
+        ]}
+      />
+    </Space>
+  );
+};
+
+/** 树结构：导出单棵树的节点明细（分裂特征、阈值、样本数、左右子节点）。 */
+const TreeStructureSection = ({
+  data,
+  modelId,
+  onComputed,
+}: {
+  data: DataSandboxRecord;
+  modelId: string;
+  onComputed: () => void;
+}) => {
+  const [computing, setComputing] = useState(false);
+  const [treeIndex, setTreeIndex] = useState(0);
+  const nodes = reportRows(data.nodes);
+  const compute = async (index: number) => {
+    setComputing(true);
+    try {
+      await DataComputeApi.canvasModelTreeStructure(modelId, index);
+      message.success('树结构导出完成');
+      onComputed();
+    } catch (e: any) {
+      message.error(e.message || '树结构导出失败');
+    } finally {
+      setComputing(false);
+    }
+  };
+  if (data.status === 'UNSUPPORTED') {
+    return (
+      <Alert
+        showIcon
+        type="info"
+        message={`当前算法（${
+          data.componentCode || '-'
+        }）不是树模型，没有可导出的树结构`}
+      />
+    );
+  }
+  const treeCount = Number(data.treeCount || 0);
+  const selector = (
+    <Space>
+      <Typography.Text>树序号</Typography.Text>
+      <Select
+        value={treeIndex}
+        style={{ width: 120 }}
+        aria-label="选择要导出的树序号"
+        options={Array.from({ length: Math.max(treeCount, 1) }, (_, index) => ({
+          value: index,
+          label: `第 ${index + 1} 棵`,
+        }))}
+        onChange={setTreeIndex}
+      />
+      <Button type="primary" loading={computing} onClick={() => compute(treeIndex)}>
+        {data.status === 'AVAILABLE' ? '重新导出' : '导出树结构'}
+      </Button>
+    </Space>
+  );
+  if (data.status !== 'AVAILABLE') {
+    return (
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Alert
+          showIcon
+          type="info"
+          message="模型产物为 joblib 二进制，需要在执行侧解析后才能展示树结构"
+        />
+        {selector}
+      </Space>
+    );
+  }
+  return (
+    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      {selector}
+      {data.truncated ? (
+        <Alert
+          showIcon
+          type="warning"
+          message="树节点数超过展示上限，以下为截断后的前 800 个节点"
+        />
+      ) : null}
+      <Descriptions
+        bordered
+        size="small"
+        column={3}
+        items={[
+          { key: 'kind', label: '模型类型', children: String(data.kind || '-') },
+          {
+            key: 'index',
+            label: '当前树序号',
+            children: `第 ${Number(data.treeIndex || 0) + 1} 棵${
+              treeCount ? ` / 共 ${treeCount} 棵` : ''
+            }`,
+          },
+          {
+            key: 'depth',
+            label: '最大深度',
+            children: reportValue(data.maxDepth),
+          },
+          {
+            key: 'nodes',
+            label: '节点数',
+            children: String(data.nodeCount ?? nodes.length),
+          },
+          { key: 'leaves', label: '叶子数', children: String(data.leafCount ?? 0) },
+          {
+            key: 'time',
+            label: '导出时间',
+            children: formatTime(data.computedAt),
+          },
+        ]}
+      />
+      <Table
+        rowKey={(row) => String(row.nodeId)}
+        size="small"
+        scroll={{ x: 'max-content', y: 420 }}
+        pagination={
+          nodes.length > 50 ? { pageSize: 50, showSizeChanger: false } : false
+        }
+        dataSource={nodes}
+        locale={{ emptyText: '没有获取到树节点' }}
+        columns={[
+          { title: '节点', dataIndex: 'nodeId', width: 90 },
+          { title: '深度', dataIndex: 'depth', width: 72, render: reportValue },
+          {
+            title: '类型',
+            width: 90,
+            render: (_, row) =>
+              row.leaf ? <Tag>叶子</Tag> : <Tag color="blue">分裂</Tag>,
+          },
+          { title: '分裂特征', dataIndex: 'feature', render: reportValue },
+          { title: '阈值', dataIndex: 'threshold', render: reportValue },
+          { title: '样本数', dataIndex: 'samples', render: reportValue },
+          { title: '取值', dataIndex: 'value', render: reportValue },
+          { title: '左子节点', dataIndex: 'left', render: reportValue },
+          { title: '右子节点', dataIndex: 'right', render: reportValue },
+        ]}
+      />
+    </Space>
+  );
+};
+
 const WorkflowModelReport = ({
   report,
+  modelId,
   onTestChange,
+  onRefresh,
 }: {
   report?: DataSandboxRecord;
+  modelId: string;
   onTestChange: (testId: string) => void;
+  onRefresh: () => void;
 }) => {
   if (!report) return <Card loading />;
   if (report.reportStatus !== 'AVAILABLE') {
@@ -738,6 +1003,8 @@ const WorkflowModelReport = ({
   const preprocessing = reportRows(report.preprocessingSteps);
   const evaluation = reportObject(report.evaluation);
   const testHistory = reportRows(report.testHistory);
+  const featureImportance = reportObject(report.featureImportance);
+  const treeStructure = reportObject(report.treeStructure);
   return (
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
       {report.runBinding === 'LEGACY_INFERRED' && (
@@ -784,6 +1051,22 @@ const WorkflowModelReport = ({
         />
       )}
       <ModelEvaluationSection evaluation={evaluation} />
+      <Divider orientation="left">特征重要性</Divider>
+      <FeatureImportanceSection
+        data={featureImportance}
+        modelId={modelId}
+        onComputed={onRefresh}
+      />
+      {treeStructure.supported ? (
+        <>
+          <Divider orientation="left">树结构</Divider>
+          <TreeStructureSection
+            data={treeStructure}
+            modelId={modelId}
+            onComputed={onRefresh}
+          />
+        </>
+      ) : null}
       <Divider orientation="left">特征概览</Divider>
       <Descriptions
         bordered
@@ -1018,7 +1301,12 @@ const WorkflowModelDrawer = ({
               ) : reportLoading ? (
                 <Card loading />
               ) : (
-                <WorkflowModelReport report={report} onTestChange={loadReport} />
+                <WorkflowModelReport
+                  report={report}
+                  modelId={model.id}
+                  onTestChange={loadReport}
+                  onRefresh={() => void loadReport()}
+                />
               ),
             },
           ]}
