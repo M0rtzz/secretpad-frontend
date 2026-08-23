@@ -543,6 +543,9 @@ export const DataModelApi = {
   /* API 发布 */
   createApi: (data: DataSandboxRecord) =>
     modelApiPost<DataSandboxRecord>('/create', data),
+  /* 统一发布（sourceType=ARTIFACT|MODEL，跳过审批直接可用） */
+  publish: (data: DataSandboxRecord) =>
+    modelApiPost<DataSandboxRecord>('/publish', data),
   /* 制品(选版本) → API 一键发布：自动注册 APPROVED 模型 + 自动建 API */
   createApiFromArtifact: (data: DataSandboxRecord) =>
     modelApiPost<DataSandboxRecord>('/create-from-artifact', data),

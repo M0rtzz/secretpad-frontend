@@ -1,77 +1,30 @@
+import { CopyOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   Button,
+  DatePicker,
   Descriptions,
   Drawer,
   Form,
   Input,
   message,
   Modal,
+  Radio,
   Select,
   Space,
   Table,
-  Tabs,
   Tag,
-  Timeline,
   Typography,
 } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
+import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import {
-  DataComputeApi,
-  DataDevApi,
-  DataModelApi,
-  DataSandboxRecord,
-  responseData,
-} from '@/services/data-sandbox';
 import { formatTime, MvpPage, RefreshButton } from '@/modules/data-sandbox-mvp/common';
+import { DataDevApi, DataModelApi, responseData } from '@/services/data-sandbox';
+import type { DataSandboxRecord } from '@/services/data-sandbox';
 
-const modelStatusLabels: Record<string, string> = {
-  DRAFT: '草稿',
-  APPROVING: '审批中',
-  APPROVED: '已通过',
-  REJECTED: '已拒绝',
-  PUBLISHED: '已发布',
-  OFFLINE: '已下线',
-};
-
-const modelStatusColors: Record<string, string> = {
-  DRAFT: 'default',
-  APPROVING: 'processing',
-  APPROVED: 'success',
-  REJECTED: 'error',
-  PUBLISHED: 'geekblue',
-  OFFLINE: 'default',
-};
-
-const approvalStatusLabels: Record<string, string> = {
-  MODEL_REVIEW: '模型评审',
-  RESOURCE_REVIEW: '资源评审',
-  APPROVED: '已通过',
-  REJECTED: '已拒绝',
-  PUBLISHED: '已发布',
-};
-
-const approvalStatusColors: Record<string, string> = {
-  MODEL_REVIEW: 'processing',
-  RESOURCE_REVIEW: 'warning',
-  APPROVED: 'success',
-  REJECTED: 'error',
-  PUBLISHED: 'geekblue',
-};
-
-const testStatusLabels: Record<string, string> = {
-  RUNNING: '执行中',
-  SUCCEEDED: '成功',
-  FAILED: '失败',
-  CANCELLED: '已取消',
-};
-
-const testStatusColors: Record<string, string> = {
-  RUNNING: 'processing',
-  SUCCEEDED: 'success',
-  FAILED: 'error',
-  CANCELLED: 'default',
-};
+/** 受控 API 调用端点（与后端 ModelApiController 一致）。 */
+const INVOKE_ENDPOINT = '/api/v1alpha1/model-api/invoke';
 
 const apiStatusLabels: Record<string, string> = {
   ENABLED: '启用',
@@ -84,180 +37,101 @@ const apiStatusColors: Record<string, string> = {
 };
 
 const artifactTypeLabels: Record<string, string> = {
-  JAR: 'JAR 制品',
-  PYTHON: 'Python 函数',
+  JAR: 'JAR',
+  PYTHON: 'Python',
+  SQL: 'SQL',
+  FUNCTION: '函数',
 };
 
-const artifactTypeColors: Record<string, string> = {
-  JAR: 'geekblue',
-  PYTHON: 'purple',
-};
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const metricTypeLabels: Record<string, string> = {
-  auto: '自动',
-  classification: '分类',
-  regression: '回归',
-};
-
-/** 解析后端返回的 JSON（已解析对象直接透传；字符串则 JSON.parse）。 */
-const parseJson = (value: unknown): DataSandboxRecord => {
-  if (value && typeof value === 'object') return value as DataSandboxRecord;
-  if (typeof value !== 'string' || !value) return {};
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
+/** 高亮 JSON 展示（key/字符串/数值/布尔 分色）。 */
+const JsonHighlight = ({ data }: { data: unknown }) => {
+  const text = JSON.stringify(data, null, 2);
+  const pattern =
+    /("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|(\s+)|(.)/g;
+  const spans: string[] = [];
+  let m: RegExpExecArray | null;
+  let last = 0;
+  while ((m = pattern.exec(text))) {
+    spans.push(escapeHtml(text.slice(last, m.index)));
+    const [, str, colon, lit, num, ws, other] = m;
+    if (str) {
+      spans.push(
+        `<span style="color:${colon ? '#0b7285' : '#a61e4d'}">${escapeHtml(
+          str,
+        )}</span>`,
+      );
+      if (colon) spans.push(escapeHtml(colon));
+    } else if (lit) {
+      spans.push(`<span style="color:#862e9c">${escapeHtml(lit)}</span>`);
+    } else if (num) {
+      spans.push(`<span style="color:#1864ab">${escapeHtml(num)}</span>`);
+    } else {
+      spans.push(escapeHtml(ws || other));
+    }
+    last = m.index + m[0].length;
   }
-};
-
-/** 指标卡片：分类 accuracy/precision/recall/f1 + 混淆矩阵；回归 mae/rmse/r2。 */
-const MetricCards = ({ metrics: metricsRaw }: { metrics: unknown }) => {
-  const metrics = parseJson(metricsRaw);
-  const keys = [
-    ['accuracy', '准确率'],
-    ['precision', '精确率'],
-    ['recall', '召回率'],
-    ['f1', 'F1'],
-    ['mae', 'MAE'],
-    ['rmse', 'RMSE'],
-    ['r2', 'R²'],
-  ] as const;
-  const items = keys.filter(([k]) => metrics[k] !== undefined);
-  const matrix = metrics.confusionMatrix as DataSandboxRecord | undefined;
+  spans.push(escapeHtml(text.slice(last)));
   return (
-    <Space wrap size={8} style={{ margin: '8px 0' }}>
-      {items.map(([k, label]) => (
-        <Tag key={k} color="blue">
-          {label} {Number(metrics[k]).toFixed(4)}
-        </Tag>
-      ))}
-      {matrix && (
-        <Tag color="geekblue">
-          TP {Number(matrix.tp)} · FP {Number(matrix.fp)} · FN {Number(matrix.fn)} · TN{' '}
-          {Number(matrix.tn)}
-        </Tag>
-      )}
-      {!items.length && matrix && <Tag>metrics</Tag>}
-    </Space>
-  );
-};
-
-/** header[] + rows[][] 摘要表。 */
-const SummaryTable = ({ summary: summaryRaw }: { summary: unknown }) => {
-  const summary = parseJson(summaryRaw);
-  const header = (summary.header || []) as string[];
-  const rows = (summary.rows || []) as string[][];
-  if (!header.length) return null;
-  return (
-    <Table
-      size="small"
-      rowKey={(_, i) => String(i)}
-      pagination={false}
-      scroll={{ x: 'max-content', y: 240 }}
-      dataSource={rows.map((r, i) =>
-        Object.fromEntries(header.map((h, j) => [h, r[j]])),
-      )}
-      columns={header.map((h) => ({
-        title: h,
-        dataIndex: h,
-        ellipsis: true,
-        width: 120,
-      }))}
+    <pre
+      style={{
+        background: '#f6f8fa',
+        padding: 12,
+        borderRadius: 6,
+        maxHeight: 320,
+        overflow: 'auto',
+        fontSize: 12,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-all',
+        marginTop: 8,
+      }}
+      dangerouslySetInnerHTML={{ __html: spans.join('') }}
     />
   );
 };
 
-export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord }) => {
-  /* ------------------------------- 模型注册 ------------------------------- */
-  const [models, setModels] = useState<DataSandboxRecord[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelStatus, setModelStatus] = useState('');
-  const [modelKeyword, setModelKeyword] = useState('');
-  const [registerOpen, setRegisterOpen] = useState(false);
-  const [registerForm] = Form.useForm();
-  // 注册模型弹窗：所属项目由沙箱上下文自动注入（context.project/sandbox.project_id），无需用户选择
-  const [jarArtifacts, setJarArtifacts] = useState<DataSandboxRecord[]>([]);
-  const regArtifactId = Form.useWatch('artifactId', registerForm);
-  const [regVersions, setRegVersions] = useState<DataSandboxRecord[]>([]);
-  const [modelDetailItem, setModelDetailItem] = useState<DataSandboxRecord>();
-  const [modelDetailOpen, setModelDetailOpen] = useState(false);
+/** 解析调试输入：JSON 数组 → {rows:[...]}；{"rows":[...]} 直通；对象 → {rows:[对象]}。 */
+const parseDebugPayload = (input: string): DataSandboxRecord | null => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    return null;
+  }
+  if (Array.isArray(parsed)) return { rows: parsed };
+  if (parsed && typeof parsed === 'object') {
+    const obj = parsed as DataSandboxRecord;
+    if (Array.isArray(obj.rows)) return obj;
+    return { rows: [parsed] };
+  }
+  return null;
+};
 
-  /* ------------------------------- 审批 ------------------------------- */
-  const [approvals, setApprovals] = useState<DataSandboxRecord[]>([]);
-  const [approvalsLoading, setApprovalsLoading] = useState(false);
-  const [approvalStatus, setApprovalStatus] = useState('');
-  const [approvalDetailOpen, setApprovalDetailOpen] = useState(false);
-  const [approvalDetailItem, setApprovalDetailItem] = useState<DataSandboxRecord>();
-  const [testForm] = Form.useForm();
-  const [testRunning, setTestRunning] = useState(false);
-  const [actionBusy, setActionBusy] = useState(false);
-
-  /* ------------------------------- 测试记录 ------------------------------- */
-  const [tests, setTests] = useState<DataSandboxRecord[]>([]);
-  const [testsLoading, setTestsLoading] = useState(false);
-  const [testStatus, setTestStatus] = useState('');
-  const [testDetailOpen, setTestDetailOpen] = useState(false);
-  const [testDetailItem, setTestDetailItem] = useState<DataSandboxRecord>();
-  const [testLogOpen, setTestLogOpen] = useState(false);
-  const [testLogText, setTestLogText] = useState('');
-
-  /* ------------------------------- API 发布 ------------------------------- */
+export const ModelCenterComponent = ({
+  context: _context,
+}: {
+  context?: DataSandboxRecord;
+}) => {
+  /* ------------------------------- API 列表 ------------------------------- */
   const [apis, setApis] = useState<DataSandboxRecord[]>([]);
   const [apisLoading, setApisLoading] = useState(false);
-  const [apiCreateOpen, setApiCreateOpen] = useState(false);
-  const [apiCreateForm] = Form.useForm();
+
+  /* ------------------------------- 发布弹窗 ------------------------------- */
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishForm] = Form.useForm();
+  const [sourceType, setSourceType] = useState<'ARTIFACT' | 'MODEL'>('ARTIFACT');
+  const [artifacts, setArtifacts] = useState<DataSandboxRecord[]>([]);
   const [publishableModels, setPublishableModels] = useState<DataSandboxRecord[]>([]);
-  const [apiDetailOpen, setApiDetailOpen] = useState(false);
-  const [apiDetailItem, setApiDetailItem] = useState<DataSandboxRecord>();
-  const [apiUpdateForm] = Form.useForm();
-  const [invokeRows, setInvokeRows] = useState('[\n  {"id": 1, "score": 60}\n]');
-  const [invokeResult, setInvokeResult] = useState<DataSandboxRecord>();
-  const [invokeLoading, setInvokeLoading] = useState(false);
 
-  /* ------------------------------- 数据加载 ------------------------------- */
-
-  const refreshModels = useCallback(async () => {
-    setModelsLoading(true);
-    try {
-      setModels(
-        responseData(
-          await DataModelApi.models({
-            status: modelStatus,
-            keyword: modelKeyword,
-          }),
-          [],
-        ),
-      );
-    } catch (error: any) {
-      message.error(error.message || '加载模型失败');
-    } finally {
-      setModelsLoading(false);
-    }
-  }, [modelStatus, modelKeyword]);
-
-  const refreshApprovals = useCallback(async () => {
-    setApprovalsLoading(true);
-    try {
-      setApprovals(
-        responseData(await DataModelApi.approvals({ status: approvalStatus }), []),
-      );
-    } catch (error: any) {
-      message.error(error.message || '加载审批失败');
-    } finally {
-      setApprovalsLoading(false);
-    }
-  }, [approvalStatus]);
-
-  const refreshTests = useCallback(async () => {
-    setTestsLoading(true);
-    try {
-      setTests(responseData(await DataModelApi.tests({ status: testStatus }), []));
-    } catch (error: any) {
-      message.error(error.message || '加载测试失败');
-    } finally {
-      setTestsLoading(false);
-    }
-  }, [testStatus]);
+  /* ------------------------------- API 详情 ------------------------------- */
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailItem, setDetailItem] = useState<DataSandboxRecord>();
+  const [updateForm] = Form.useForm();
+  const [debugInput, setDebugInput] = useState('[\n  {"age": 28, "balance": 45000}\n]');
+  const [debugResult, setDebugResult] = useState<DataSandboxRecord>();
+  const [debugLoading, setDebugLoading] = useState(false);
 
   const refreshApis = useCallback(async () => {
     setApisLoading(true);
@@ -271,313 +145,177 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
   }, []);
 
   useEffect(() => {
-    refreshModels();
-  }, [refreshModels]);
-
-  useEffect(() => {
-    refreshApprovals();
-  }, [refreshApprovals]);
-
-  useEffect(() => {
-    refreshTests();
-  }, [refreshTests]);
-
-  useEffect(() => {
     refreshApis();
   }, [refreshApis]);
 
-  useEffect(() => {
-    if (registerOpen) {
-      DataDevApi.artifacts({ type: 'JAR' }).then((res) =>
-        setJarArtifacts(
-          responseData(res, []).filter((a) => a.type === 'JAR' || a.type === 'PYTHON'),
+  /* ------------------------------- 发布来源加载 ------------------------------- */
+  const loadPublishSources = useCallback(async () => {
+    try {
+      const [artifactRes, modelRes] = await Promise.all([
+        DataDevApi.artifacts({}),
+        DataModelApi.models({}),
+      ]);
+      const arts = responseData(artifactRes, []);
+      const withVersions = await Promise.all(
+        arts.map(async (a) => {
+          try {
+            return {
+              ...a,
+              versions: responseData(await DataDevApi.versions(a.id), []),
+            };
+          } catch {
+            return { ...a, versions: [] };
+          }
+        }),
+      );
+      setArtifacts(withVersions);
+      setPublishableModels(
+        responseData(modelRes, []).filter(
+          (m) =>
+            m.canvasModelSaved && (m.status === 'APPROVED' || m.status === 'PUBLISHED'),
         ),
       );
+    } catch (error: any) {
+      message.error(error.message || '加载发布来源失败');
     }
-  }, [registerOpen]);
+  }, []);
 
   useEffect(() => {
-    if (regArtifactId) {
-      DataDevApi.versions(regArtifactId).then((res) =>
-        setRegVersions(responseData(res, [])),
-      );
+    if (publishOpen) {
+      publishForm.resetFields();
+      setSourceType('ARTIFACT');
+      loadPublishSources();
+    }
+  }, [publishOpen, publishForm, loadPublishSources]);
+
+  const latestVersion = (
+    versions: DataSandboxRecord[],
+  ): DataSandboxRecord | undefined => {
+    if (!versions || !versions.length) return undefined;
+    return [...versions].sort((a, b) => Number(b.version) - Number(a.version))[0];
+  };
+
+  const artifactOptions = useMemo(
+    () =>
+      artifacts.map((a) => ({
+        value: a.id,
+        label: `${a.name} (${artifactTypeLabels[a.type] || a.type} - v${
+          latestVersion(a.versions)?.version ?? '?'
+        })`,
+      })),
+    [artifacts],
+  );
+
+  const modelOptions = publishableModels.map((m) => ({
+    value: m.id,
+    label: `${m.name} (v${m.version})`,
+  }));
+
+  const sourceId = Form.useWatch('sourceId', publishForm);
+  const sourceVersions = useMemo(
+    () =>
+      (artifacts.find((a) => a.id === sourceId)?.versions || [])
+        .slice()
+        .sort((a, b) => Number(b.version) - Number(a.version)),
+    [artifacts, sourceId],
+  );
+
+  const onSourceChange = (value: string) => {
+    if (sourceType === 'ARTIFACT') {
+      const art = artifacts.find((a) => a.id === value);
+      if (art) {
+        publishForm.setFieldValue('name', art.name);
+        publishForm.setFieldValue('version', latestVersion(art.versions)?.id);
+      }
     } else {
-      setRegVersions([]);
-    }
-  }, [regArtifactId]);
-
-  useEffect(() => {
-    if (apiCreateOpen) {
-      DataModelApi.models({}).then((res) =>
-        setPublishableModels(
-          responseData(res, []).filter(
-            (m) =>
-              m.canvasModelSaved &&
-              (m.status === 'APPROVED' || m.status === 'PUBLISHED'),
-          ),
-        ),
-      );
-    }
-  }, [apiCreateOpen]);
-
-  /* ------------------------------- 模型操作 ------------------------------- */
-
-  const openRegister = () => {
-    registerForm.resetFields();
-    setRegisterOpen(true);
-  };
-
-  const registerModel = async () => {
-    const values = await registerForm.validateFields();
-    // 沙箱上下文内项目唯一，无需再让用户选择：取当前沙箱所属项目（兜底保留表单值）
-    const projectId =
-      context?.project?.project_id || context?.sandbox?.project_id || values.projectId;
-    try {
-      responseData(
-        await DataModelApi.register({
-          name: values.name,
-          projectId,
-          artifactId: values.artifactId,
-          artifactVersionId: values.artifactVersionId,
-          description: values.description || '',
-        }),
-        {},
-      );
-      message.success('模型注册成功（DRAFT），可提交审批');
-      setRegisterOpen(false);
-      refreshModels();
-    } catch (error: any) {
-      message.error(error.message || '注册失败');
+      const m = publishableModels.find((mm) => mm.id === value);
+      if (m) publishForm.setFieldValue('name', m.name);
     }
   };
 
-  const openModelDetail = async (row: DataSandboxRecord) => {
-    try {
-      const detail = responseData(await DataModelApi.modelDetail(row.id), {});
-      setModelDetailItem(detail);
-      setModelDetailOpen(true);
-    } catch (error: any) {
-      message.error(error.message || '加载模型详情失败');
-    }
-  };
+  /* ------------------------------- 发布 / 详情操作 ------------------------------- */
 
-  const submitApproval = async (modelId: string) => {
-    try {
-      const detail = responseData(
-        await DataModelApi.submitApproval({ modelId, comment: '' }),
-        {},
-      );
-      message.success('已提交审批 → 模型评审');
-      setModelDetailItem(detail);
-      refreshModels();
-      refreshApprovals();
-    } catch (error: any) {
-      message.error(error.message || '提交审批失败');
-    }
-  };
-
-  const publishAsComponent = async (row: DataSandboxRecord) => {
-    try {
-      const component = responseData(
-        await DataComputeApi.publishComponent({ modelId: row.id, name: row.name }),
-        {},
-      );
-      message.success(`已发布为建模组件：${component.code}`);
-    } catch (error: any) {
-      message.error(error.message || '发布组件失败');
-    }
-  };
-
-  const deleteModel = async (row: DataSandboxRecord) => {
-    Modal.confirm({
-      title: `删除模型 ${row.name}？`,
-      content: '仅草稿/已拒绝/已下线模型可删除，删除后不可恢复。',
-      onOk: async () => {
-        try {
-          await DataModelApi.deleteModel(row.id);
-          message.success('模型已删除');
-          refreshModels();
-        } catch (error: any) {
-          message.error(error.message || '删除失败');
-        }
-      },
-    });
-  };
-
-  /* ------------------------------- 审批操作 ------------------------------- */
-
-  const openApprovalDetail = async (row: DataSandboxRecord) => {
-    try {
-      const detail = responseData(await DataModelApi.approvalDetail(row.id), {});
-      setApprovalDetailItem(detail);
-      setApprovalDetailOpen(true);
-      testForm.resetFields();
-    } catch (error: any) {
-      message.error(error.message || '加载审批详情失败');
-    }
-  };
-
-  const refreshApprovalDetail = async (id: string) => {
-    try {
-      setApprovalDetailItem(responseData(await DataModelApi.approvalDetail(id), {}));
-    } catch (error: any) {
-      message.error(error.message || '刷新审批详情失败');
-    }
-  };
-
-  const approvalAction = async (action: string, comment = '') => {
-    const item = approvalDetailItem;
-    if (!item) return;
-    setActionBusy(true);
-    try {
-      const detail = responseData(
-        await DataModelApi.approvalAction({ id: item.id, action, comment }),
-        {},
-      );
-      message.success(`审批操作 ${action} 成功`);
-      setApprovalDetailItem(detail);
-      refreshModels();
-      refreshApprovals();
-    } catch (error: any) {
-      message.error(error.message || `操作 ${action} 失败`);
-      refreshApprovalDetail(item.id);
-    } finally {
-      setActionBusy(false);
-    }
-  };
-
-  const executeTest = async () => {
-    const item = approvalDetailItem;
-    if (!item) return;
-    const values = await testForm.validateFields();
-    setTestRunning(true);
-    try {
-      const test = responseData(
-        await DataModelApi.executeTest({
-          modelId: item.model_id,
-          nodeId: values.nodeId,
-          datatableId: values.datatableId,
-          labelColumn: values.labelColumn,
-          predictionColumn: values.predictionColumn,
-          metricType: values.metricType || 'auto',
-          params: parseJson(values.params || '{}'),
-        }),
-        {},
-      );
-      message.success('测试已提交执行，运行结束后自动收官');
-      testForm.resetFields();
-      refreshApprovalDetail(item.id);
-      refreshTests();
-    } catch (error: any) {
-      message.error(error.message || '测试执行失败');
-    } finally {
-      setTestRunning(false);
-    }
-  };
-
-  const openTestDetail = async (id: string) => {
-    try {
-      setTestDetailItem(responseData(await DataModelApi.testDetail(id), {}));
-      setTestDetailOpen(true);
-    } catch (error: any) {
-      message.error(error.message || '加载测试详情失败');
-    }
-  };
-
-  const openTestLog = async (id: string, attempt?: number) => {
-    try {
-      const log = responseData(await DataModelApi.testLog(id, attempt), {});
-      setTestLogText(String(log.logText || '（无日志）'));
-      setTestLogOpen(true);
-    } catch (error: any) {
-      message.error(error.message || '加载日志失败');
-    }
-  };
-
-  const cancelTest = async (row: DataSandboxRecord) => {
-    try {
-      responseData(await DataModelApi.cancelTest(row.id), {});
-      message.success('测试已取消');
-      refreshTests();
-      refreshApprovalDetail(approvalDetailItem?.id || '');
-    } catch (error: any) {
-      message.error(error.message || '取消失败');
-    }
-  };
-
-  const retryTest = async (row: DataSandboxRecord) => {
-    try {
-      responseData(await DataModelApi.retryTest(row.id), {});
-      message.success('已重试');
-      refreshTests();
-    } catch (error: any) {
-      message.error(error.message || '重试失败');
-    }
-  };
-
-  /* ------------------------------- API 操作 ------------------------------- */
-
-  const createApi = async () => {
-    const values = await apiCreateForm.validateFields();
+  const submitPublish = async () => {
+    const values = await publishForm.validateFields();
+    const range = values.validRange as [Dayjs, Dayjs] | undefined;
     try {
       const api = responseData(
-        await DataModelApi.createApi({
-          modelId: values.modelId,
-          name: values.name,
+        await DataModelApi.publish({
+          sourceType,
+          sourceId: values.sourceId,
+          version: sourceType === 'ARTIFACT' ? values.version : undefined,
+          apiName: values.name,
           description: values.description || '',
-          authorizedUsers: values.authorizedUsers || [],
+          authUsers: values.authUsers || [],
           ipWhitelist: values.ipWhitelist || [],
-          validFrom: values.validFrom || '',
-          validTo: values.validTo || '',
+          validFrom: range?.[0]?.format('YYYY-MM-DD HH:mm:ss') || '',
+          validTo: range?.[1]?.format('YYYY-MM-DD HH:mm:ss') || '',
         }),
         {},
       );
       message.success('API 已发布');
-      setApiCreateOpen(false);
+      setPublishOpen(false);
       refreshApis();
-      refreshModels();
-      setApiDetailItem(api);
-      setApiDetailOpen(true);
+      setDetailItem(api);
+      setDetailOpen(true);
     } catch (error: any) {
       message.error(error.message || '发布失败');
     }
   };
 
-  const openApiDetail = async (row: DataSandboxRecord) => {
+  const toRange = (from?: string, to?: string): [Dayjs, Dayjs] | null => {
+    const f = from ? dayjs(from) : null;
+    const t = to ? dayjs(to) : null;
+    if (!f && !t) return null;
+    return [f, t] as [Dayjs, Dayjs];
+  };
+
+  const openDetail = async (row: DataSandboxRecord) => {
     try {
-      setApiDetailItem(responseData(await DataModelApi.apiDetail(row.id), {}));
-      setApiDetailOpen(true);
+      const detail = responseData(await DataModelApi.apiDetail(row.id), {});
+      setDetailItem(detail);
+      setDebugResult(undefined);
+      setDetailOpen(true);
+      updateForm.setFieldsValue({
+        authorizedUsers: Array.isArray(detail.authorized_users)
+          ? detail.authorized_users
+          : [],
+        ipWhitelist: Array.isArray(detail.ip_whitelist) ? detail.ip_whitelist : [],
+        validRange: toRange(detail.valid_from, detail.valid_to),
+        description: detail.description || '',
+      });
     } catch (error: any) {
       message.error(error.message || '加载 API 详情失败');
     }
   };
 
-  const refreshApiDetail = async (id: string) => {
+  const refreshDetail = async (id: string) => {
+    if (!id) return;
     try {
-      setApiDetailItem(responseData(await DataModelApi.apiDetail(id), {}));
+      setDetailItem(responseData(await DataModelApi.apiDetail(id), {}));
     } catch (error: any) {
-      message.error(error.message || '刷新 API 详情失败');
+      message.error(error.message || '刷新详情失败');
     }
   };
 
-  const updateApi = async () => {
-    const item = apiDetailItem;
+  const updateApiSettings = async () => {
+    const item = detailItem;
     if (!item) return;
-    const values = await apiUpdateForm.validateFields();
+    const values = await updateForm.validateFields();
+    const range = values.validRange as [Dayjs, Dayjs] | undefined;
     try {
       const detail = responseData(
         await DataModelApi.updateApi({
           id: item.id,
-          name: values.name,
           description: values.description,
           authorizedUsers: values.authorizedUsers || [],
           ipWhitelist: values.ipWhitelist || [],
-          validFrom: values.validFrom || '',
-          validTo: values.validTo || '',
+          validFrom: range?.[0]?.format('YYYY-MM-DD HH:mm:ss') || '',
+          validTo: range?.[1]?.format('YYYY-MM-DD HH:mm:ss') || '',
         }),
         {},
       );
-      setApiDetailItem(detail);
+      setDetailItem(detail);
       message.success('API 已更新');
       refreshApis();
     } catch (error: any) {
@@ -585,12 +323,12 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
     }
   };
 
-  const apiToggle = async (row: DataSandboxRecord, enable: boolean) => {
+  const toggleApi = async (row: DataSandboxRecord, enable: boolean) => {
     try {
       await (enable ? DataModelApi.enableApi(row.id) : DataModelApi.disableApi(row.id));
       message.success(enable ? '已启用' : '已停用');
       refreshApis();
-      refreshApiDetail(apiDetailItem?.id || '');
+      refreshDetail(row.id);
     } catch (error: any) {
       message.error(error.message || '操作失败');
     }
@@ -606,7 +344,7 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
       onOk: async () => {
         try {
           const detail = responseData(await DataModelApi.regenerateSecret(row.id), {});
-          setApiDetailItem(detail);
+          setDetailItem(detail);
           message.success('新密钥已生成，请立即复制保存');
         } catch (error: any) {
           message.error(error.message || '重发失败');
@@ -622,7 +360,7 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
         try {
           await DataModelApi.deleteApi(row.id);
           message.success('API 已删除');
-          setApiDetailOpen(false);
+          setDetailOpen(false);
           refreshApis();
         } catch (error: any) {
           message.error(error.message || '删除失败');
@@ -631,205 +369,67 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
     });
   };
 
-  const runInvoke = async (useCredential: boolean) => {
-    const item = apiDetailItem;
+  /* ------------------------------- 在线调试 ------------------------------- */
+
+  const runDebug = async () => {
+    const item = detailItem;
     if (!item) return;
-    let rows: unknown;
-    try {
-      rows = JSON.parse(invokeRows);
-    } catch {
-      message.warning('rows 必须是合法 JSON 数组');
+    const payload = parseDebugPayload(debugInput);
+    if (!payload) {
+      message.warning('请输入合法 JSON（数组或 {"rows": [...]}）');
       return;
     }
-    setInvokeLoading(true);
-    setInvokeResult(undefined);
+    setDebugLoading(true);
+    setDebugResult(undefined);
     try {
-      const payload = { rows, params: parseJson(item.invokeParams || '{}') };
+      const useCredential = !!(item.secret && item.app_id);
       const result = useCredential
         ? await DataModelApi.invokeWithCredential(item.app_id, item.secret, payload)
         : await DataModelApi.invokeWithToken({ appId: item.app_id, ...payload });
-      const data = responseData(result, {});
-      setInvokeResult(data);
+      setDebugResult(responseData(result, {}));
       refreshApis();
-      refreshApiDetail(item.id);
+      refreshDetail(item.id);
     } catch (error: any) {
       message.error(error.message || '调用失败');
     } finally {
-      setInvokeLoading(false);
+      setDebugLoading(false);
     }
   };
 
-  /* ------------------------------- 渲染 ------------------------------- */
+  /* ------------------------------- 渲染辅助 ------------------------------- */
 
-  const registerColumns = [
-    {
-      title: '模型',
-      dataIndex: 'name',
-      render: (v: string, row: DataSandboxRecord) => (
-        <Space direction="vertical" size={0}>
-          <Button
-            type="link"
-            style={{ padding: 0 }}
-            onClick={() => openModelDetail(row)}
-          >
-            <strong>{v}</strong>
-          </Button>
-          <span style={{ color: '#888' }}>{row.id}</span>
-        </Space>
-      ),
-    },
-    {
-      title: '类型',
-      dataIndex: 'artifact_type',
-      render: (v: string) => (
-        <Tag color={artifactTypeColors[v]}>{artifactTypeLabels[v] || v || '-'}</Tag>
-      ),
-    },
-    { title: '版本', dataIndex: 'version' },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (v: string) => (
-        <Tag color={modelStatusColors[v]}>{modelStatusLabels[v] || v}</Tag>
-      ),
-    },
-    { title: '创建人', dataIndex: 'created_by' },
-    {
-      title: '更新时间',
-      dataIndex: 'updated_at',
-      render: formatTime,
-    },
-    {
-      title: '操作',
-      width: 260,
-      render: (_: unknown, row: DataSandboxRecord) => (
-        <Space wrap>
-          <Button type="link" onClick={() => openModelDetail(row)}>
-            详情
-          </Button>
-          {['DRAFT', 'REJECTED'].includes(row.status) && (
-            <Button type="link" onClick={() => submitApproval(row.id)}>
-              提交审批
-            </Button>
-          )}
-          {['APPROVED', 'PUBLISHED'].includes(row.status) && (
-            <Button type="link" onClick={() => publishAsComponent(row)}>
-              发布组件
-            </Button>
-          )}
-          {['DRAFT', 'REJECTED', 'OFFLINE'].includes(row.status) && (
-            <Button type="link" danger onClick={() => deleteModel(row)}>
-              删除
-            </Button>
-          )}
-        </Space>
-      ),
-    },
-  ];
+  const endpoint = `${window.location.origin}${INVOKE_ENDPOINT}`;
 
-  const approvalColumns = [
-    {
-      title: '审批单',
-      dataIndex: 'id',
-      render: (v: string, row: DataSandboxRecord) => (
-        <Space direction="vertical" size={0}>
-          <Button
-            type="link"
-            style={{ padding: 0 }}
-            onClick={() => openApprovalDetail(row)}
-          >
-            <strong>{row.model_display_name || row.model_name}</strong>
-          </Button>
-          <span style={{ color: '#888' }}>{v}</span>
-        </Space>
-      ),
-    },
-    {
-      title: '制品',
-      dataIndex: 'artifact_name',
-      render: (v: string, row: DataSandboxRecord) => (
-        <Tag color={artifactTypeColors[row.artifact_type]}>{v || '-'}</Tag>
-      ),
-    },
-    { title: '版本', dataIndex: 'version' },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (v: string) => (
-        <Tag color={approvalStatusColors[v]}>{approvalStatusLabels[v] || v}</Tag>
-      ),
-    },
-    { title: '提交人', dataIndex: 'submitter' },
-    { title: '审批人', dataIndex: 'reviewer', render: (v: string) => v || '-' },
-    { title: '提交时间', dataIndex: 'submitted_at', render: formatTime },
-    {
-      title: '操作',
-      render: (_: unknown, row: DataSandboxRecord) => (
-        <Button type="link" onClick={() => openApprovalDetail(row)}>
-          审批
-        </Button>
-      ),
-    },
-  ];
+  const sourceLabel = (row: DataSandboxRecord): string => {
+    const m = row.model as DataSandboxRecord | undefined;
+    if (!m) return '-';
+    const type = artifactTypeLabels[m.artifact_type] || m.artifact_type || '';
+    return `${m.artifact_name || m.name || '-'} (${type} - v${
+      m.artifact_version_no ?? m.version ?? '?'
+    })`;
+  };
 
-  const testsColumns = [
-    {
-      title: '测试',
-      dataIndex: 'id',
-      render: (v: string, row: DataSandboxRecord) => (
-        <Space direction="vertical" size={0}>
-          <Button
-            type="link"
-            style={{ padding: 0 }}
-            onClick={() => openTestDetail(row.id)}
-          >
-            <strong>{row.model_id}</strong>
-          </Button>
-          <span style={{ color: '#888' }}>{v}</span>
-        </Space>
-      ),
-    },
-    { title: '运行模式', dataIndex: 'run_mode', render: (v: string) => v || 'DEV' },
-    { title: '类型', dataIndex: 'exec_type' },
-    { title: '源表', dataIndex: 'source_datatable_id' },
-    {
-      title: '指标',
-      dataIndex: 'metric_type',
-      render: (v: string) => metricTypeLabels[v] || v,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (v: string) => (
-        <Tag color={testStatusColors[v]}>{testStatusLabels[v] || v}</Tag>
-      ),
-    },
-    { title: '完成时间', dataIndex: 'finished_at', render: formatTime },
-    {
-      title: '操作',
-      width: 220,
-      render: (_: unknown, row: DataSandboxRecord) => (
-        <Space wrap>
-          <Button type="link" onClick={() => openTestDetail(row.id)}>
-            详情
-          </Button>
-          <Button type="link" onClick={() => openTestLog(row.id)}>
-            日志
-          </Button>
-          {row.status === 'RUNNING' && (
-            <Button type="link" danger onClick={() => cancelTest(row)}>
-              取消
-            </Button>
-          )}
-          {row.status === 'FAILED' && (
-            <Button type="link" onClick={() => retryTest(row)}>
-              重试
-            </Button>
-          )}
-        </Space>
-      ),
-    },
-  ];
+  const curlText = useMemo(() => {
+    const item = detailItem;
+    if (!item?.app_id) return '';
+    const payload = parseDebugPayload(debugInput);
+    const body = payload ? JSON.stringify(payload) : '{"rows":[]}';
+    if (item.secret) {
+      return [
+        `curl -X POST '${endpoint}'`,
+        `  -H 'Content-Type: application/json'`,
+        `  -H 'X-APP-ID: ${item.app_id}'`,
+        `  -H 'X-APP-SECRET: ${item.secret}'`,
+        `  -d '${body}'`,
+      ].join(' \\\n');
+    }
+    return [
+      `curl -X POST '${endpoint}'`,
+      `  -H 'Content-Type: application/json'`,
+      `  -H 'User-Token: <你的登录令牌>'`,
+      `  -d '${JSON.stringify({ appId: item.app_id, ...(payload || {}) })}'`,
+    ].join(' \\\n');
+  }, [detailItem, debugInput, endpoint]);
 
   const apiColumns = [
     {
@@ -837,12 +437,16 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
       dataIndex: 'name',
       render: (v: string, row: DataSandboxRecord) => (
         <Space direction="vertical" size={0}>
-          <Button type="link" style={{ padding: 0 }} onClick={() => openApiDetail(row)}>
+          <Button type="link" style={{ padding: 0 }} onClick={() => openDetail(row)}>
             <strong>{v}</strong>
           </Button>
           <span style={{ color: '#888' }}>{row.app_id}</span>
         </Space>
       ),
+    },
+    {
+      title: '来源',
+      render: (_: unknown, row: DataSandboxRecord) => sourceLabel(row),
     },
     {
       title: '状态',
@@ -869,10 +473,10 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
       width: 220,
       render: (_: unknown, row: DataSandboxRecord) => (
         <Space wrap>
-          <Button type="link" onClick={() => openApiDetail(row)}>
+          <Button type="link" onClick={() => openDetail(row)}>
             详情
           </Button>
-          <Button type="link" onClick={() => apiToggle(row, row.status !== 'ENABLED')}>
+          <Button type="link" onClick={() => toggleApi(row, row.status !== 'ENABLED')}>
             {row.status === 'ENABLED' ? '停用' : '启用'}
           </Button>
           <Button type="link" onClick={() => regenerateSecret(row)}>
@@ -886,660 +490,123 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
     },
   ];
 
-  const approval = approvalDetailItem;
-  const approvalModel = approval?.model as DataSandboxRecord | undefined;
-  const detailTests = (approval?.tests || []) as DataSandboxRecord[];
-  const apiItem = apiDetailItem;
+  const item = detailItem;
+  const debugRows = (debugResult?.rows || []) as string[][];
+  const debugHeader = (debugResult?.header || []) as string[];
 
   return (
     <MvpPage
-      title="沙箱智能建模：自定义算法"
-      description="管理自定义算法；受控 API 仅允许发布从可视化建模画布显式保存的工作流模型"
+      title="沙箱智能建模：自定义算法 / API 发布"
+      description="统一发布体系：开发制品（JAR / Python / SQL / 函数）或画布模型一键发布为受控 API，支持 IP 白名单、授权用户与有效时间控制，发布即用、跳过审批"
       extra={
-        <RefreshButton
-          loading={modelsLoading || approvalsLoading || testsLoading || apisLoading}
-          onClick={() => {
-            refreshModels();
-            refreshApprovals();
-            refreshTests();
-            refreshApis();
-          }}
-        />
+        <Space>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              publishForm.resetFields();
+              setPublishOpen(true);
+            }}
+          >
+            发布 API
+          </Button>
+          <RefreshButton loading={apisLoading} onClick={refreshApis} />
+        </Space>
       }
     >
-      <Tabs
-        items={[
-          {
-            key: 'models',
-            label: '模型注册',
-            children: (
-              <>
-                <Space style={{ marginBottom: 16 }}>
-                  <Select
-                    value={modelStatus}
-                    onChange={setModelStatus}
-                    style={{ width: 140 }}
-                    options={[
-                      { value: '', label: '全部状态' },
-                      ...Object.entries(modelStatusLabels).map(([value, label]) => ({
-                        value,
-                        label,
-                      })),
-                    ]}
-                  />
-                  <Input.Search
-                    placeholder="模型名称 / ID"
-                    allowClear
-                    onSearch={setModelKeyword}
-                    style={{ width: 240 }}
-                  />
-                  <Button type="primary" onClick={openRegister}>
-                    注册模型
-                  </Button>
-                </Space>
-                <Table
-                  rowKey="id"
-                  loading={modelsLoading}
-                  dataSource={models}
-                  scroll={{ x: 1000 }}
-                  columns={registerColumns}
-                />
-              </>
-            ),
-          },
-          {
-            key: 'approvals',
-            label: '模型审批',
-            children: (
-              <>
-                <Space style={{ marginBottom: 16 }}>
-                  <Select
-                    value={approvalStatus}
-                    onChange={setApprovalStatus}
-                    style={{ width: 160 }}
-                    options={[
-                      { value: '', label: '全部状态' },
-                      ...Object.entries(approvalStatusLabels).map(([value, label]) => ({
-                        value,
-                        label,
-                      })),
-                    ]}
-                  />
-                  <Typography.Text type="secondary">
-                    通过前需至少一次成功测试并保存评估指标（门禁 MODEL_TEST_REQUIRED）
-                  </Typography.Text>
-                </Space>
-                <Table
-                  rowKey="id"
-                  loading={approvalsLoading}
-                  dataSource={approvals}
-                  scroll={{ x: 1100 }}
-                  columns={approvalColumns}
-                />
-              </>
-            ),
-          },
-          {
-            key: 'tests',
-            label: '测试记录',
-            children: (
-              <>
-                <Space style={{ marginBottom: 16 }}>
-                  <Select
-                    value={testStatus}
-                    onChange={setTestStatus}
-                    style={{ width: 140 }}
-                    options={[
-                      { value: '', label: '全部状态' },
-                      ...Object.entries(testStatusLabels).map(([value, label]) => ({
-                        value,
-                        label,
-                      })),
-                    ]}
-                  />
-                </Space>
-                <Table
-                  rowKey="id"
-                  loading={testsLoading}
-                  dataSource={tests}
-                  scroll={{ x: 1100 }}
-                  columns={testsColumns}
-                />
-              </>
-            ),
-          },
-          {
-            key: 'apis',
-            label: 'API 发布',
-            children: (
-              <>
-                <Space style={{ marginBottom: 16 }}>
-                  <Typography.Text type="secondary">
-                    仅可选择画布中已保存且关联成功训练结果的模型；发布后一次性展示
-                    app_id + secret
-                  </Typography.Text>
-                  <Button
-                    type="primary"
-                    onClick={() => {
-                      apiCreateForm.resetFields();
-                      setApiCreateOpen(true);
-                    }}
-                  >
-                    发布 API
-                  </Button>
-                </Space>
-                <Table
-                  rowKey="id"
-                  loading={apisLoading}
-                  dataSource={apis}
-                  scroll={{ x: 1100 }}
-                  columns={apiColumns}
-                />
-              </>
-            ),
-          },
-        ]}
+      <Table
+        rowKey="id"
+        loading={apisLoading}
+        dataSource={apis}
+        scroll={{ x: 1200 }}
+        columns={apiColumns}
       />
 
-      {/* 注册模型 */}
+      {/* 发布为受控 API */}
       <Modal
-        title="注册模型"
-        open={registerOpen}
-        onOk={registerModel}
-        onCancel={() => setRegisterOpen(false)}
+        title="发布为受控 API"
+        open={publishOpen}
+        onOk={submitPublish}
+        onCancel={() => setPublishOpen(false)}
         destroyOnClose
-        width={560}
+        width={600}
       >
-        <Form form={registerForm} layout="vertical">
-          <Form.Item
-            name="name"
-            label="模型名称"
-            rules={[{ required: true, message: '请输入模型名称' }]}
-          >
-            <Input placeholder="如：信贷风控评分模型" />
+        <Form form={publishForm} layout="vertical">
+          <Form.Item label="发布来源">
+            <Radio.Group
+              value={sourceType}
+              onChange={(e) => {
+                setSourceType(e.target.value);
+                publishForm.resetFields(['sourceId', 'version', 'name']);
+              }}
+            >
+              <Radio.Button value="ARTIFACT">开发制品 (Artifact)</Radio.Button>
+              <Radio.Button value="MODEL">模型 (Model)</Radio.Button>
+            </Radio.Group>
           </Form.Item>
-          <Form.Item
-            name="artifactId"
-            label="计算制品（JAR / Python）"
-            rules={[{ required: true, message: '请选择制品' }]}
-          >
-            <Select
-              placeholder="仅 JAR / Python 制品可注册为模型"
-              options={jarArtifacts.map((a) => ({
-                value: a.id,
-                label: `${a.name} · ${artifactTypeLabels[a.type] || a.type}`,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item
-            name="artifactVersionId"
-            label="制品版本"
-            rules={[{ required: true, message: '请选择版本' }]}
-          >
-            <Select
-              placeholder="选择该制品的一个版本"
-              options={regVersions.map((v) => ({
-                value: v.id,
-                label: `v${v.version}`,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={2} placeholder="模型用途、口径等" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 模型详情 */}
-      <Drawer
-        title="模型详情"
-        open={modelDetailOpen}
-        onClose={() => setModelDetailOpen(false)}
-        width={560}
-      >
-        {modelDetailItem && (
-          <>
-            <Descriptions
-              column={1}
-              size="small"
-              bordered
-              items={[
-                { key: 'name', label: '名称', children: modelDetailItem.name },
-                { key: 'id', label: '模型 ID', children: modelDetailItem.id },
-                {
-                  key: 'status',
-                  label: '状态',
-                  children: (
-                    <Tag color={modelStatusColors[modelDetailItem.status]}>
-                      {modelStatusLabels[modelDetailItem.status] ||
-                        modelDetailItem.status}
-                    </Tag>
-                  ),
-                },
-                { key: 'project', label: '项目', children: modelDetailItem.project_id },
-                {
-                  key: 'artifact',
-                  label: '制品',
-                  children: `${modelDetailItem.artifact_name || '-'} (v${
-                    modelDetailItem.artifact_version_no || modelDetailItem.version
-                  })`,
-                },
-                {
-                  key: 'node',
-                  label: '运行节点',
-                  children: modelDetailItem.node_id || '-',
-                },
-                {
-                  key: 'created',
-                  label: '创建人',
-                  children: modelDetailItem.created_by,
-                },
-                {
-                  key: 'desc',
-                  label: '描述',
-                  children: modelDetailItem.description || '-',
-                },
-                {
-                  key: 'counts',
-                  label: '统计',
-                  children: `测试 ${modelDetailItem.testCount ?? 0} · API ${
-                    modelDetailItem.apiCount ?? 0
-                  }`,
-                },
-                {
-                  key: 'approval',
-                  label: '当前审批',
-                  children: modelDetailItem.currentApproval
-                    ? `${
-                        approvalStatusLabels[modelDetailItem.currentApproval.status] ||
-                        modelDetailItem.currentApproval.status
-                      } · v${modelDetailItem.currentApproval.version} · ${formatTime(
-                        modelDetailItem.currentApproval.submitted_at,
-                      )}`
-                    : '无',
-                },
-              ]}
-            />
-            <Space style={{ marginTop: 16 }}>
-              {['DRAFT', 'REJECTED'].includes(modelDetailItem.status) && (
-                <Button
-                  type="primary"
-                  onClick={() => submitApproval(modelDetailItem.id)}
-                >
-                  提交审批
-                </Button>
-              )}
-            </Space>
-          </>
-        )}
-      </Drawer>
-
-      {/* 审批详情 */}
-      <Drawer
-        title="模型审批"
-        open={approvalDetailOpen}
-        onClose={() => setApprovalDetailOpen(false)}
-        width={720}
-      >
-        {approval && (
-          <>
-            <Descriptions
-              column={2}
-              size="small"
-              bordered
-              items={[
-                {
-                  key: 'status',
-                  label: '状态',
-                  children: (
-                    <Tag color={approvalStatusColors[approval.status]}>
-                      {approvalStatusLabels[approval.status] || approval.status}
-                    </Tag>
-                  ),
-                },
-                {
-                  key: 'stage',
-                  label: '阶段',
-                  children: approval.current_stage || '-',
-                },
-                { key: 'version', label: '版本', children: `v${approval.version}` },
-                { key: 'submitter', label: '提交人', children: approval.submitter },
-                {
-                  key: 'reviewer',
-                  label: '审批人',
-                  children: approval.reviewer || '-',
-                },
-                {
-                  key: 'submitted',
-                  label: '提交时间',
-                  children: formatTime(approval.submitted_at),
-                },
-              ]}
-            />
-            {approvalModel && (
-              <Descriptions
-                column={2}
-                size="small"
-                style={{ marginTop: 12 }}
-                items={[
-                  { key: 'm', label: '模型', children: approvalModel.name },
-                  {
-                    key: 's',
-                    label: '状态',
-                    children: modelStatusLabels[approvalModel.status],
-                  },
-                  { key: 'p', label: '项目', children: approvalModel.project_id },
-                  {
-                    key: 'n',
-                    label: '运行节点',
-                    children: approvalModel.node_id || '-',
-                  },
-                ]}
-              />
-            )}
-
-            <Typography.Title level={5} style={{ marginTop: 16 }}>
-              测试执行（审批人配置参数与测试数据）
-            </Typography.Title>
-            <Form form={testForm} layout="inline" style={{ rowGap: 8 }}>
-              <Form.Item name="nodeId" label="运行节点" rules={[{ required: true }]}>
-                <Input placeholder="alice" style={{ width: 120 }} />
-              </Form.Item>
+          {sourceType === 'ARTIFACT' ? (
+            <>
               <Form.Item
-                name="datatableId"
-                label="测试数据表"
-                rules={[{ required: true }]}
+                name="sourceId"
+                label="选择制品"
+                rules={[{ required: true, message: '请选择制品' }]}
               >
-                <Input placeholder="数据表 ID" style={{ width: 160 }} />
-              </Form.Item>
-              <Form.Item name="labelColumn" label="真实列" rules={[{ required: true }]}>
-                <Input placeholder="pass" style={{ width: 110 }} />
-              </Form.Item>
-              <Form.Item
-                name="predictionColumn"
-                label="预测列"
-                rules={[{ required: true }]}
-              >
-                <Input placeholder="prediction" style={{ width: 120 }} />
-              </Form.Item>
-              <Form.Item name="metricType" label="指标" initialValue="auto">
                 <Select
-                  style={{ width: 110 }}
-                  options={Object.entries(metricTypeLabels).map(([value, label]) => ({
-                    value,
-                    label,
+                  placeholder="选择 JAR / Python / SQL / 函数制品"
+                  options={artifactOptions}
+                  onChange={onSourceChange}
+                />
+              </Form.Item>
+              <Form.Item
+                name="version"
+                label="制品版本"
+                rules={[{ required: true, message: '请选择版本' }]}
+              >
+                <Select
+                  placeholder="默认选中最新版本"
+                  options={sourceVersions.map((v) => ({
+                    value: v.id,
+                    label: `v${v.version}${v.description ? ` · ${v.description}` : ''}`,
                   }))}
                 />
               </Form.Item>
-              <Form.Item>
-                <Button type="primary" loading={testRunning} onClick={executeTest}>
-                  执行测试
-                </Button>
-              </Form.Item>
-            </Form>
-            <Form.Item label="测试参数 JSON（模型自定义参数）" style={{ marginTop: 8 }}>
-              <Input.TextArea
-                rows={2}
-                onChange={(e) => testForm.setFieldValue('params', e.target.value)}
-                placeholder={'{"featureColumn": "score"}'}
+            </>
+          ) : (
+            <Form.Item
+              name="sourceId"
+              label="选择模型"
+              rules={[{ required: true, message: '请选择模型' }]}
+            >
+              <Select
+                placeholder="仅画布已保存且已通过（APPROVED/PUBLISHED）的模型"
+                options={modelOptions}
+                onChange={onSourceChange}
               />
             </Form.Item>
-
-            {detailTests.length > 0 && (
-              <>
-                <Typography.Title level={5} style={{ marginTop: 12 }}>
-                  测试记录（通过门禁需要 ≥1 次成功测试且有指标）
-                </Typography.Title>
-                <Table
-                  size="small"
-                  rowKey="id"
-                  dataSource={detailTests}
-                  pagination={false}
-                  columns={[
-                    {
-                      title: '状态',
-                      dataIndex: 'status',
-                      render: (v: string) => (
-                        <Tag color={testStatusColors[v]}>
-                          {testStatusLabels[v] || v}
-                        </Tag>
-                      ),
-                    },
-                    { title: '源表', dataIndex: 'source_datatable_id' },
-                    {
-                      title: '真实/预测',
-                      render: (_: unknown, r: DataSandboxRecord) =>
-                        `${r.label_column || '-'} / ${r.prediction_column || '-'}`,
-                    },
-                    {
-                      title: '指标',
-                      dataIndex: 'metrics',
-                      render: (v: unknown) => (
-                        <MetricCards metrics={v as DataSandboxRecord} />
-                      ),
-                    },
-                    {
-                      title: '操作',
-                      render: (_: unknown, r: DataSandboxRecord) => (
-                        <Button type="link" onClick={() => openTestDetail(r.id)}>
-                          查看
-                        </Button>
-                      ),
-                    },
-                  ]}
-                />
-              </>
-            )}
-
-            <Typography.Title level={5} style={{ marginTop: 12 }}>
-              审批历史
-            </Typography.Title>
-            <Timeline
-              items={(approval.history || []).map((h: DataSandboxRecord) => ({
-                children: `${h.action}：${h.from_status || '-'} → ${
-                  h.to_status || '-'
-                } · ${h.reviewer || h.submitter || '-'} · ${formatTime(h.created_at)}${
-                  h.comment ? ` · ${h.comment}` : ''
-                }`,
-              }))}
-            />
-
-            <Space style={{ marginTop: 16 }} wrap>
-              {['MODEL_REVIEW', 'RESOURCE_REVIEW'].includes(approval.status) && (
-                <Button
-                  type="primary"
-                  loading={actionBusy}
-                  onClick={() => approvalAction('APPROVE')}
-                >
-                  通过
-                </Button>
-              )}
-              {['MODEL_REVIEW', 'RESOURCE_REVIEW'].includes(approval.status) && (
-                <Button
-                  danger
-                  loading={actionBusy}
-                  onClick={() => approvalAction('REJECT')}
-                >
-                  拒绝
-                </Button>
-              )}
-              {approval.status === 'REJECTED' && (
-                <Button loading={actionBusy} onClick={() => approvalAction('RESUBMIT')}>
-                  重新提交
-                </Button>
-              )}
-              {approval.status === 'APPROVED' && (
-                <Button
-                  type="primary"
-                  loading={actionBusy}
-                  onClick={() => approvalAction('PUBLISH')}
-                >
-                  发布
-                </Button>
-              )}
-            </Space>
-          </>
-        )}
-      </Drawer>
-
-      {/* 测试详情 */}
-      <Drawer
-        title="测试详情"
-        open={testDetailOpen}
-        onClose={() => setTestDetailOpen(false)}
-        width={720}
-      >
-        {testDetailItem && (
-          <>
-            <Descriptions
-              column={2}
-              size="small"
-              bordered
-              items={[
-                {
-                  key: 's',
-                  label: '状态',
-                  children: (
-                    <Tag color={testStatusColors[testDetailItem.status]}>
-                      {testStatusLabels[testDetailItem.status] || testDetailItem.status}
-                    </Tag>
-                  ),
-                },
-                { key: 'm', label: '模型', children: testDetailItem.model_id },
-                {
-                  key: 't',
-                  label: '任务',
-                  children: testDetailItem.task?.id || testDetailItem.task_id,
-                },
-                {
-                  key: 'r',
-                  label: '运行模式',
-                  children: testDetailItem.run_mode || 'DEV',
-                },
-                {
-                  key: 'src',
-                  label: '源表',
-                  children: `${testDetailItem.source_datatable_id}`,
-                },
-                {
-                  key: 'cols',
-                  label: '真实/预测',
-                  children: `${testDetailItem.label_column || '-'} / ${
-                    testDetailItem.prediction_column || '-'
-                  }`,
-                },
-                {
-                  key: 'mt',
-                  label: '指标类型',
-                  children:
-                    metricTypeLabels[testDetailItem.metric_type] ||
-                    testDetailItem.metric_type,
-                },
-                {
-                  key: 'err',
-                  label: '错误',
-                  children: testDetailItem.error_message || '-',
-                },
-              ]}
-            />
-            <Typography.Title level={5} style={{ marginTop: 12 }}>
-              评估指标
-            </Typography.Title>
-            <MetricCards metrics={testDetailItem.metrics as DataSandboxRecord} />
-            <Typography.Title level={5} style={{ marginTop: 12 }}>
-              输入摘要（{testDetailItem.inputSummary?.rowCount ?? '-'} 行）
-            </Typography.Title>
-            <SummaryTable summary={testDetailItem.inputSummary as DataSandboxRecord} />
-            <Typography.Title level={5} style={{ marginTop: 12 }}>
-              输出摘要（{testDetailItem.outputSummary?.rowCount ?? '-'} 行）
-            </Typography.Title>
-            <SummaryTable summary={testDetailItem.outputSummary as DataSandboxRecord} />
-            <Typography.Title level={5} style={{ marginTop: 12 }}>
-              结果预览
-            </Typography.Title>
-            <SummaryTable summary={parseJson(testDetailItem.result_preview)} />
-            <Space style={{ marginTop: 12 }}>
-              <Button onClick={() => openTestLog(testDetailItem.id)}>
-                查看调试日志
-              </Button>
-              {testDetailItem.status === 'RUNNING' && (
-                <Button danger onClick={() => cancelTest(testDetailItem)}>
-                  取消
-                </Button>
-              )}
-              {testDetailItem.status === 'FAILED' && (
-                <Button onClick={() => retryTest(testDetailItem)}>重试</Button>
-              )}
-            </Space>
-          </>
-        )}
-      </Drawer>
-
-      {/* 调试日志 */}
-      <Modal
-        title="测试调试日志"
-        open={testLogOpen}
-        onCancel={() => setTestLogOpen(false)}
-        footer={null}
-        width={760}
-      >
-        <pre
-          style={{
-            background: '#0b0e14',
-            color: '#d4d4d4',
-            padding: 12,
-            maxHeight: 480,
-            overflow: 'auto',
-            fontSize: 12,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-          }}
-        >
-          {testLogText}
-        </pre>
-      </Modal>
-
-      {/* 发布 API */}
-      <Modal
-        title="发布模型为受控 API"
-        open={apiCreateOpen}
-        onOk={createApi}
-        onCancel={() => setApiCreateOpen(false)}
-        destroyOnClose
-        width={560}
-      >
-        <Form form={apiCreateForm} layout="vertical">
-          <Form.Item
-            name="modelId"
-            label="模型（已通过审批）"
-            rules={[{ required: true, message: '请选择模型' }]}
-          >
-            <Select
-              placeholder="仅已通过（APPROVED/PUBLISHED）的模型可发布"
-              options={publishableModels.map((m) => ({
-                value: m.id,
-                label: `${m.name} · v${m.version} · ${modelStatusLabels[m.status]}`,
-              }))}
-            />
-          </Form.Item>
+          )}
           <Form.Item
             name="name"
             label="API 名称"
             rules={[{ required: true, message: '请输入名称' }]}
           >
-            <Input placeholder="如：信贷评分服务" />
+            <Input placeholder="自动取自来源名称，可修改" />
           </Form.Item>
-          <Form.Item name="authorizedUsers" label="授权用户（空=仅凭据调用）">
+          <Form.Item name="authUsers" label="授权用户（空=仅凭据调用）">
             <Select mode="tags" placeholder="输入用户名后回车，如 bob" open={false} />
           </Form.Item>
           <Form.Item name="ipWhitelist" label="IP 白名单（空=任意 IP；支持 CIDR）">
             <Select mode="tags" placeholder="如 10.0.0.0/8、1.2.3.4" open={false} />
           </Form.Item>
-          <Form.Item name="validFrom" label="生效时间（yyyy-MM-dd HH:mm:ss，空=不限）">
-            <Input placeholder="2026-08-01 00:00:00" />
-          </Form.Item>
-          <Form.Item name="validTo" label="失效时间（yyyy-MM-dd HH:mm:ss，空=不限）">
-            <Input placeholder="2026-12-31 23:59:59" />
+          <Form.Item name="validRange" label="生效 / 失效时间（空=不限）">
+            <DatePicker.RangePicker
+              showTime={{ format: 'HH:mm:ss' }}
+              format="YYYY-MM-DD HH:mm:ss"
+              style={{ width: '100%' }}
+              presets={[
+                { label: '最近 30 天', value: [dayjs(), dayjs().add(30, 'day')] },
+                { label: '最近 90 天', value: [dayjs(), dayjs().add(90, 'day')] },
+              ]}
+            />
           </Form.Item>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={2} />
@@ -1550,31 +617,43 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
       {/* API 详情 */}
       <Drawer
         title="API 详情"
-        open={apiDetailOpen}
-        onClose={() => setApiDetailOpen(false)}
-        width={720}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        width={760}
       >
-        {apiItem && (
+        {item && (
           <>
             <Descriptions
               column={2}
               size="small"
               bordered
               items={[
-                { key: 'name', label: '名称', children: apiItem.name },
+                { key: 'name', label: '名称', children: item.name },
+                { key: 'source', label: '来源', children: sourceLabel(item) },
+                {
+                  key: 'endpoint',
+                  label: 'API Endpoint',
+                  children: (
+                    <Typography.Text copyable={{ text: endpoint }}>
+                      {endpoint}
+                    </Typography.Text>
+                  ),
+                },
                 {
                   key: 'app',
                   label: 'App ID',
                   children: (
-                    <Typography.Text copyable>{apiItem.app_id}</Typography.Text>
+                    <Typography.Text copyable={{ text: item.app_id }}>
+                      {item.app_id}
+                    </Typography.Text>
                   ),
                 },
                 {
                   key: 'secret',
                   label: '调用密钥',
-                  children: apiItem.secret ? (
-                    <Typography.Text copyable={{ text: apiItem.secret }} code>
-                      {apiItem.secret}
+                  children: item.secret ? (
+                    <Typography.Text copyable={{ text: item.secret }} code>
+                      {item.secret}
                     </Typography.Text>
                   ) : (
                     <span style={{ color: '#888' }}>已隐藏（发布/重发时展示一次）</span>
@@ -1584,143 +663,172 @@ export const ModelCenterComponent = ({ context }: { context?: DataSandboxRecord 
                   key: 'status',
                   label: '状态',
                   children: (
-                    <Tag color={apiStatusColors[apiItem.status]}>
-                      {apiStatusLabels[apiItem.status] || apiItem.status}
+                    <Tag color={apiStatusColors[item.status]}>
+                      {apiStatusLabels[item.status] || item.status}
                     </Tag>
                   ),
                 },
-                { key: 'calls', label: '调用次数', children: apiItem.call_count },
+                {
+                  key: 'calls',
+                  label: '调用次数 / 最近',
+                  children: `${Number(item.call_count || 0)} 次 · ${
+                    item.last_called_at ? formatTime(item.last_called_at) : '未调用'
+                  }`,
+                },
                 {
                   key: 'valid',
                   label: '有效时间',
-                  children: `${apiItem.valid_from || '-'} ~ ${apiItem.valid_to || '-'}`,
+                  children: `${item.valid_from || '-'} ~ ${item.valid_to || '-'}`,
                 },
                 {
                   key: 'ip',
                   label: 'IP 白名单',
-                  children: Array.isArray(apiItem.ip_whitelist)
-                    ? apiItem.ip_whitelist.join(', ') || '任意 IP'
-                    : apiItem.ip_whitelist || '任意 IP',
+                  children: Array.isArray(item.ip_whitelist)
+                    ? item.ip_whitelist.join(', ') || '任意 IP'
+                    : item.ip_whitelist || '任意 IP',
                 },
                 {
                   key: 'users',
                   label: '授权用户',
-                  children: Array.isArray(apiItem.authorized_users)
-                    ? apiItem.authorized_users.join(', ') || '仅凭据调用'
-                    : apiItem.authorized_users || '仅凭据调用',
+                  children: Array.isArray(item.authorized_users)
+                    ? item.authorized_users.join(', ') || '仅凭据调用'
+                    : item.authorized_users || '仅凭据调用',
+                },
+                {
+                  key: 'creator',
+                  label: '创建人 / 时间',
+                  children: `${item.created_by} · ${formatTime(item.created_at)}`,
                 },
               ]}
             />
-            <Typography.Title level={5} style={{ marginTop: 12 }}>
-              调用测试控制台
+            <Space style={{ marginTop: 12 }}>
+              {item.status === 'ENABLED' ? (
+                <Button onClick={() => toggleApi(item, false)}>停用</Button>
+              ) : (
+                <Button type="primary" onClick={() => toggleApi(item, true)}>
+                  启用
+                </Button>
+              )}
+              <Button onClick={() => regenerateSecret(item)}>重发密钥</Button>
+              <Button danger onClick={() => deleteApi(item)}>
+                删除
+              </Button>
+            </Space>
+
+            <Typography.Title level={5} style={{ marginTop: 16 }}>
+              授权 / 白名单设置
             </Typography.Title>
+            <Form form={updateForm} layout="vertical">
+              <Form.Item
+                name="authorizedUsers"
+                label="授权用户（空=仅凭据调用；凭证调用者不受约束）"
+              >
+                <Select mode="tags" placeholder="输入用户名后回车" open={false} />
+              </Form.Item>
+              <Form.Item name="ipWhitelist" label="IP 白名单（空=任意 IP；支持 CIDR）">
+                <Select mode="tags" placeholder="IP 或 CIDR" open={false} />
+              </Form.Item>
+              <Form.Item name="validRange" label="生效 / 失效时间（空=不限）">
+                <DatePicker.RangePicker
+                  showTime={{ format: 'HH:mm:ss' }}
+                  format="YYYY-MM-DD HH:mm:ss"
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+              <Form.Item name="description" label="描述">
+                <Input.TextArea rows={2} />
+              </Form.Item>
+              <Button type="primary" onClick={updateApiSettings}>
+                保存设置
+              </Button>
+            </Form>
+
+            <Typography.Title level={5} style={{ marginTop: 16 }}>
+              开发者调用指南
+            </Typography.Title>
+            <Space style={{ marginBottom: 4 }}>
+              <Typography.Text type="secondary">
+                可直接复制到终端执行；参数即上方调试输入
+              </Typography.Text>
+              <Button
+                size="small"
+                icon={<CopyOutlined />}
+                onClick={() => {
+                  navigator.clipboard.writeText(curlText);
+                  message.success('cURL 已复制');
+                }}
+              >
+                复制 cURL
+              </Button>
+            </Space>
+            <pre
+              style={{
+                background: '#f6f8fa',
+                padding: 12,
+                borderRadius: 6,
+                maxHeight: 200,
+                overflow: 'auto',
+                fontSize: 12,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+              }}
+            >
+              {curlText}
+            </pre>
+
+            <Typography.Title level={5} style={{ marginTop: 16 }}>
+              在线调试控制台
+            </Typography.Title>
+            <Typography.Text type="secondary">
+              输入 JSON 数组或 {'{"rows": [...]}'}，自动注入当前 API 的 App ID / 密钥
+            </Typography.Text>
             <Input.TextArea
               rows={5}
-              value={invokeRows}
-              onChange={(e) => setInvokeRows(e.target.value)}
-              style={{ fontFamily: 'monospace', fontSize: 12 }}
-              placeholder={
-                '请求体 rows 数组：[{"id":1,"score":60},{"id":2,"score":80}]'
-              }
+              value={debugInput}
+              onChange={(e) => setDebugInput(e.target.value)}
+              style={{ fontFamily: 'monospace', fontSize: 12, marginTop: 8 }}
+              placeholder={'[{"age": 28, "balance": 45000}]'}
             />
             <Space style={{ marginTop: 8 }}>
               <Button
                 type="primary"
-                loading={invokeLoading}
-                onClick={() => runInvoke(!!apiItem.secret)}
-                disabled={!apiItem.app_id}
+                loading={debugLoading}
+                onClick={runDebug}
+                disabled={!item.app_id}
               >
-                调用（{apiItem.secret ? '凭据 X-APP-ID/SECRET' : 'User-Token'}）
-              </Button>
-              {apiItem.status === 'ENABLED' ? (
-                <Button onClick={() => apiToggle(apiItem, false)}>停用</Button>
-              ) : (
-                <Button type="primary" onClick={() => apiToggle(apiItem, true)}>
-                  启用
-                </Button>
-              )}
-              <Button onClick={() => regenerateSecret(apiItem)}>重发密钥</Button>
-              <Button danger onClick={() => deleteApi(apiItem)}>
-                删除
+                调用调试（{item.secret ? '凭据 X-APP-ID/SECRET' : 'User-Token'}）
               </Button>
             </Space>
-            {invokeResult && (
+            {debugResult && (
               <>
-                <Typography.Title level={5} style={{ marginTop: 12 }}>
-                  调用结果（{invokeResult.resultRows ?? 0} 行 ·{' '}
-                  {invokeResult.elapsedMs ?? 0}ms）
-                </Typography.Title>
-                <Table
-                  size="small"
-                  rowKey={(_, i) => String(i)}
-                  pagination={false}
-                  scroll={{ x: 'max-content', y: 260 }}
-                  dataSource={(invokeResult.rows || []).map((r: string[], i: number) =>
-                    Object.fromEntries(
-                      ((invokeResult.header || []) as string[]).map((h, j) => [
-                        h,
-                        r[j],
-                      ]),
-                    ),
-                  )}
-                  columns={((invokeResult.header || []) as string[]).map((h) => ({
-                    title: h,
-                    dataIndex: h,
-                    ellipsis: true,
-                    width: 120,
-                  }))}
-                />
+                <Space style={{ marginTop: 12 }}>
+                  <Typography.Text strong>调用结果</Typography.Text>
+                  <Tag color="blue">
+                    {Number(debugResult.resultRows || 0)} 行 ·{' '}
+                    {Number(debugResult.elapsedMs || 0)}ms
+                  </Tag>
+                </Space>
+                {debugHeader.length ? (
+                  <Table
+                    size="small"
+                    rowKey={(_, i) => String(i)}
+                    pagination={false}
+                    scroll={{ x: 'max-content', y: 260 }}
+                    dataSource={debugRows.map((r) =>
+                      Object.fromEntries(debugHeader.map((h, j) => [h, r[j]])),
+                    )}
+                    columns={debugHeader.map((h) => ({
+                      title: h,
+                      dataIndex: h,
+                      ellipsis: true,
+                      width: 120,
+                    }))}
+                  />
+                ) : (
+                  <JsonHighlight data={debugResult} />
+                )}
               </>
             )}
-            <Typography.Title level={5} style={{ marginTop: 12 }}>
-              授权/白名单设置
-            </Typography.Title>
-            <Form form={apiUpdateForm} layout="vertical">
-              <Form.Item
-                name="authorizedUsers"
-                label="授权用户（空=仅凭据调用；凭证调用者不受约束）"
-                initialValue={
-                  Array.isArray(apiItem.authorized_users)
-                    ? apiItem.authorized_users
-                    : []
-                }
-              >
-                <Select mode="tags" placeholder="输入用户名后回车" open={false} />
-              </Form.Item>
-              <Form.Item
-                name="ipWhitelist"
-                label="IP 白名单（空=任意 IP）"
-                initialValue={
-                  Array.isArray(apiItem.ip_whitelist) ? apiItem.ip_whitelist : []
-                }
-              >
-                <Select mode="tags" placeholder="IP 或 CIDR" open={false} />
-              </Form.Item>
-              <Form.Item
-                name="validFrom"
-                label="生效时间"
-                initialValue={apiItem.valid_from || ''}
-              >
-                <Input placeholder="yyyy-MM-dd HH:mm:ss" />
-              </Form.Item>
-              <Form.Item
-                name="validTo"
-                label="失效时间"
-                initialValue={apiItem.valid_to || ''}
-              >
-                <Input placeholder="yyyy-MM-dd HH:mm:ss" />
-              </Form.Item>
-              <Form.Item
-                name="description"
-                label="描述"
-                initialValue={apiItem.description || ''}
-              >
-                <Input.TextArea rows={2} />
-              </Form.Item>
-              <Button type="primary" onClick={updateApi}>
-                保存设置
-              </Button>
-            </Form>
           </>
         )}
       </Drawer>
