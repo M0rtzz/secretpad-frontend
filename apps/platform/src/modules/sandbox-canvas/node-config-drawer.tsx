@@ -1,12 +1,12 @@
 import { ActionType } from '@secretflow/dag';
 import {
-  AutoComplete,
   Button,
   Descriptions,
   Drawer,
   Form,
   Input,
   InputNumber,
+  Modal,
   Select,
   Space,
   Switch,
@@ -14,13 +14,19 @@ import {
   Typography,
   message,
 } from 'antd';
+import { DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 
-import type { DataSandboxRecord } from '@/services/data-sandbox';
+import {
+  DataComputeApi,
+  responseData,
+  type DataSandboxRecord,
+} from '@/services/data-sandbox';
 import { useModel } from '@/util/valtio-helper';
 
 import { sandboxDag } from './sandbox-dag';
 import { SandboxCanvasView } from './sandbox-canvas.view';
+import { TablePreviewModal } from './table-preview-modal';
 
 type ParamSchema = {
   name: string;
@@ -45,34 +51,59 @@ const parseJson = (value: unknown): unknown[] => {
   return [];
 };
 
-/** 上游数据表列候选：当前节点入边 → 上游 data.table 所选挂载表列（可在其中任选/手填）。 */
-const useUpstreamColumns = (nodeId: string): string[] => {
+/**
+ * 节点当前输入数据表：调用 /canvas/node/input 解析入边 → 上游 data.table 挂载表或
+ * 上游组件最近一次成功输出的 op_* 表，返回 schema（处理列/预测列下拉候选）与预览信息。
+ */
+const useUpstreamTable = (nodeId: string) => {
   const view = useModel(SandboxCanvasView);
-  const [columns, setColumns] = useState<string[]>([]);
+  const [table, setTable] = useState<{
+    tableName: string;
+    displayName: string;
+    columns: string[];
+    available: boolean;
+  }>({ tableName: '', displayName: '', columns: [], available: false });
+
   useEffect(() => {
-    const graph = sandboxDag.graphManager.getGraphInstance();
-    if (!graph || !nodeId) return;
-    const edges = graph.getIncomingEdges(nodeId) || [];
-    if (edges.length === 0) {
-      setColumns([]);
+    let cancelled = false;
+    if (!nodeId || !view.canvasId) {
+      setTable({ tableName: '', displayName: '', columns: [], available: false });
       return;
     }
-    const sourceId = edges[0].getSourceCellId();
-    const source = graph.getCellById(sourceId);
-    const data = source?.getData?.() || {};
-    if (data.codeName === 'data.table' && data.params?.table) {
-      setColumns(view.resourceColumns[data.params.table] || []);
-    } else {
-      setColumns([]);
-    }
-  }, [nodeId, view.resourceColumns]);
-  return columns;
+    (async () => {
+      try {
+        const res = responseData(
+          await DataComputeApi.canvasNodeInput(view.canvasId, nodeId, 20),
+          {},
+        );
+        if (cancelled) return;
+        const schema = (res.schema as { name?: string }[]) || [];
+        setTable({
+          tableName: String(res.tableName || ''),
+          displayName: String(res.displayName || res.tableName || ''),
+          columns: schema.map((c) => String(c.name || '')),
+          available: Boolean(res.available),
+        });
+      } catch {
+        if (!cancelled) {
+          setTable({ tableName: '', displayName: '', columns: [], available: false });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // 抽屉每次打开/切换节点都重新拉取输入表（节点运行后列集合可能更新）
+  }, [nodeId, view.canvasId, view.drawer]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return table;
 };
 
 export const NodeConfigDrawer = () => {
   const view = useModel(SandboxCanvasView);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [inputPreviewOpen, setInputPreviewOpen] = useState(false);
 
   const nodeId = view.selectedNodeId;
   const graph = sandboxDag.graphManager.getGraphInstance();
@@ -87,7 +118,7 @@ export const NodeConfigDrawer = () => {
   const schema: ParamSchema[] = parseJson(
     operator?.parameter_schema_json,
   ) as ParamSchema[];
-  const upstreamColumns = useUpstreamColumns(nodeId);
+  const upstreamTable = useUpstreamTable(nodeId);
 
   useEffect(() => {
     if (!node || schema.length === 0) return;
@@ -101,6 +132,8 @@ export const NodeConfigDrawer = () => {
   }, [nodeId, codeName, schema.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resource = (operator?.resource || {}) as Record<string, string>;
+
+  const columnOptions = upstreamTable.columns.map((c) => ({ value: c }));
 
   const renderField = (p: ParamSchema) => {
     const label = (
@@ -144,22 +177,23 @@ export const NodeConfigDrawer = () => {
           </Form.Item>
         );
       case 'columns':
+        // 处理列（输入列）：基于当前组件输入数据表的列下拉选择，仍允许手填
         return (
           <Form.Item key={p.name} name={p.name} label={label}>
             <Select
               mode="tags"
-              open={false}
-              suffixIcon={null}
               tokenSeparators={[',']}
               placeholder={
-                upstreamColumns.length
-                  ? '选择或输入列名（可多选）'
+                upstreamTable.columns.length
+                  ? '下拉选择输入数据表的列（可多选/手填）'
                   : '输入列名（逗号分隔）'
               }
+              options={columnOptions}
             />
           </Form.Item>
         );
       case 'column':
+        // 预测列/标签列：基于当前组件输入数据表的列下拉选择
         return (
           <Form.Item
             key={p.name}
@@ -167,9 +201,11 @@ export const NodeConfigDrawer = () => {
             label={label}
             rules={[{ required: p.required }]}
           >
-            <AutoComplete
-              options={upstreamColumns.map((c) => ({ value: c }))}
-              placeholder="选择或输入列名"
+            <Select
+              showSearch
+              allowClear
+              placeholder="选择输入数据表的列"
+              options={columnOptions}
             />
           </Form.Item>
         );
@@ -248,6 +284,38 @@ export const NodeConfigDrawer = () => {
     view.runNode(nodeId);
   };
 
+  const onDelete = () => {
+    const graph = sandboxDag.graphManager.getGraphInstance();
+    const cell = nodeId && graph?.getCellById(nodeId);
+    if (!cell) {
+      message.warning('未找到节点，请刷新画布后重试');
+      return;
+    }
+    Modal.confirm({
+      title: '删除节点',
+      zIndex: 2000,
+      content: `确认将节点「${
+        nodeData.label || nodeId
+      }」从画布移除？其连接线将一并删除。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await sandboxDag.graphManager.executeAction(
+            ActionType.removeCell,
+            [nodeId],
+            [],
+          );
+          view.closeDrawer();
+          message.success('节点已删除');
+        } catch (e) {
+          message.error(`删除节点失败：${String(e)}`);
+        }
+      },
+    });
+  };
+
   return (
     <Drawer
       title="节点配置"
@@ -256,6 +324,9 @@ export const NodeConfigDrawer = () => {
       onClose={() => view.closeDrawer()}
       extra={
         <Space>
+          <Button danger icon={<DeleteOutlined />} onClick={onDelete}>
+            删除
+          </Button>
           <Button onClick={() => view.closeDrawer()}>取消</Button>
           <Button type="primary" loading={saving} onClick={onSave}>
             保存配置
@@ -286,7 +357,18 @@ export const NodeConfigDrawer = () => {
           <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
             {schema.map((p) => renderField(p))}
           </Form>
-          <div>
+          {upstreamTable.available && upstreamTable.tableName && (
+            <Button
+              block
+              icon={<EyeOutlined />}
+              onClick={() => setInputPreviewOpen(true)}
+              style={{ marginTop: 8 }}
+            >
+              查看当前输入数据表
+              {upstreamTable.displayName ? `（${upstreamTable.displayName}）` : ''}
+            </Button>
+          )}
+          <div style={{ marginTop: 16 }}>
             <Typography.Text strong>输入 Schema</Typography.Text>
             <div style={{ margin: '4px 0 12px' }}>
               {parseJson(operator?.input_schema_json).map((c, i) => (
@@ -317,6 +399,13 @@ export const NodeConfigDrawer = () => {
           </Button>
         </>
       )}
+      <TablePreviewModal
+        sandboxId={view.sandboxId}
+        tableName={upstreamTable.tableName}
+        title={`输入数据预览：${upstreamTable.displayName || upstreamTable.tableName}`}
+        open={inputPreviewOpen}
+        onClose={() => setInputPreviewOpen(false)}
+      />
     </Drawer>
   );
 };

@@ -2,6 +2,7 @@ import { ActionType, NodeStatus, Portal, ShowMenuContext } from '@secretflow/dag
 import type { Node } from '@antv/x6';
 import {
   ArrowLeftOutlined,
+  EyeOutlined,
   PlayCircleOutlined,
   RedoOutlined,
   ReloadOutlined,
@@ -16,6 +17,7 @@ import {
   Button,
   Alert,
   Collapse,
+  Descriptions,
   Divider,
   Empty,
   Form,
@@ -48,6 +50,7 @@ import { NodeConfigDrawer } from './node-config-drawer';
 import { NodeDrawer } from './node-drawer';
 import { sandboxDag } from './sandbox-dag';
 import { SandboxCanvasView } from './sandbox-canvas.view';
+import { TablePreviewModal } from './table-preview-modal';
 import { TemplateDrawer } from './template-drawer';
 import { VersionsDrawer } from './versions-drawer';
 import styles from './index.less';
@@ -89,6 +92,12 @@ export const SandboxCanvasWorkspace = () => {
   const [modelSaving, setModelSaving] = useState(false);
   const [modelCandidates, setModelCandidates] = useState<DataSandboxRecord[]>([]);
   const [modelForm] = Form.useForm();
+  // 数据表预览（数据资源 / 画布中间结果 预览按钮）
+  const [preview, setPreview] = useState<{ tableName: string; title: string } | null>(
+    null,
+  );
+  // 保存模型：选中的工作流最终输出节点
+  const selectedResultNodeId = Form.useWatch('nodeId', modelForm);
 
   const goBack = async () => {
     const userInfo = await loginService.getUserInfo();
@@ -207,7 +216,7 @@ export const SandboxCanvasWorkspace = () => {
       modelForm.setFieldsValue({
         name: `${String(view.canvas.name || '未命名画布')}-模型`,
         description: String(view.canvas.description || ''),
-        modelId: candidates.length === 1 ? candidates[0].model_id : undefined,
+        nodeId: candidates.length === 1 ? candidates[0].node_id : undefined,
       });
       setModelOpen(true);
     } catch (error: any) {
@@ -224,6 +233,7 @@ export const SandboxCanvasWorkspace = () => {
           canvasId: view.canvasId,
           name: values.name,
           description: values.description || '',
+          nodeId: values.nodeId || '',
           modelId: values.modelId || '',
         }),
         {},
@@ -261,6 +271,17 @@ export const SandboxCanvasWorkspace = () => {
       return {};
     }
   };
+
+  // 保存模型：工作流输入数据（首个候选携带）与选中的工作流输出结果
+  const workflowInput = modelCandidates[0]
+    ? {
+        table: String(modelCandidates[0].input_table || ''),
+        columns: (modelCandidates[0].input_columns as string[]) || [],
+      }
+    : null;
+  const selectedCandidate = modelCandidates.find(
+    (c) => String(c.node_id) === String(selectedResultNodeId),
+  );
 
   const leftItems = [
     {
@@ -320,6 +341,23 @@ export const SandboxCanvasWorkspace = () => {
               renderItem={(r) => (
                 <List.Item
                   style={{ cursor: 'pointer' }}
+                  actions={[
+                    <Button
+                      key="preview"
+                      size="small"
+                      type="text"
+                      icon={<EyeOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreview({
+                          tableName: String(r.tableName),
+                          title: `数据预览：${String(r.name)}`,
+                        });
+                      }}
+                    >
+                      预览
+                    </Button>,
+                  ]}
                   onClick={() =>
                     addNode('data.table', `数据-${String(r.name)}`, {
                       table: r.tableName,
@@ -340,18 +378,42 @@ export const SandboxCanvasWorkspace = () => {
             />
           </Tooltip>
           <Divider orientation="left" plain>
-            画布中间结果（op_*）
+            画布中间结果
           </Divider>
           <List
             size="small"
             dataSource={view.resources.filter((r) => r.kind === 'OPERATOR')}
             renderItem={(r) => (
-              <List.Item>
+              <List.Item
+                actions={[
+                  <Button
+                    key="preview"
+                    size="small"
+                    type="text"
+                    icon={<EyeOutlined />}
+                    onClick={() =>
+                      setPreview({
+                        tableName: String(r.tableName),
+                        title: `中间结果预览：${String(
+                          r.displayName || r.name || r.tableName,
+                        )}`,
+                      })
+                    }
+                  >
+                    预览
+                  </Button>,
+                ]}
+              >
                 <List.Item.Meta
-                  title={<span style={{ fontSize: 13 }}>{String(r.tableName)}</span>}
+                  title={
+                    <span style={{ fontSize: 13 }}>
+                      {String(r.displayName || r.name || r.tableName)}
+                    </span>
+                  }
                   description={
                     <span style={{ fontSize: 12 }}>
-                      {Array.isArray(r.columns) ? `${r.columns.length} 列` : ''}
+                      {String(r.tableName)}
+                      {Array.isArray(r.columns) ? ` · ${r.columns.length} 列` : ''}
                     </span>
                   }
                 />
@@ -506,21 +568,54 @@ export const SandboxCanvasWorkspace = () => {
           >
             <Input maxLength={128} />
           </Form.Item>
-          <Form.Item name="modelId" label="可执行训练结果（发布 API 时必选）">
+          <Form.Item name="nodeId" label="可执行工作流结果（发布 API 时必选）">
             <Select
               allowClear
-              placeholder="选择该画布成功运行的训练组件输出"
+              placeholder="选择工作流最终一次成功的输出结果"
               options={modelCandidates.map((item) => ({
-                value: item.model_id,
-                label: `${item.name} · ${item.component_code} · ${item.node_id}`,
+                value: item.node_id,
+                label: `${item.node_name}输出（${item.component_code}）${
+                  item.model_id ? ' · 可执行' : ''
+                }`,
               }))}
             />
           </Form.Item>
+          {(workflowInput || selectedCandidate) && (
+            <Descriptions column={1} size="small" style={{ marginBottom: 12 }}>
+              {workflowInput && workflowInput.table && (
+                <Descriptions.Item label="工作流输入数据">
+                  <Tag color="blue">{workflowInput.table}</Tag>
+                  <span style={{ fontSize: 12, marginLeft: 8 }}>
+                    {workflowInput.columns.length} 列：
+                    {workflowInput.columns.join(', ')}
+                  </span>
+                </Descriptions.Item>
+              )}
+              {selectedCandidate && (
+                <Descriptions.Item label="工作流输出结果">
+                  <Tag color="green">{selectedCandidate.node_name}输出</Tag>
+                  <span style={{ fontSize: 12, marginLeft: 8 }}>
+                    {String(selectedCandidate.output_table || '')} ·{' '}
+                    {selectedCandidate.model_id
+                      ? '可执行（可发布 API）'
+                      : '快照（无可执行模型）'}
+                  </span>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+          )}
           <Form.Item name="description" label="模型说明">
             <Input.TextArea rows={3} maxLength={512} showCount />
           </Form.Item>
         </Form>
       </Modal>
+      <TablePreviewModal
+        sandboxId={view.sandboxId}
+        tableName={preview?.tableName || ''}
+        title={preview?.title}
+        open={Boolean(preview)}
+        onClose={() => setPreview(null)}
+      />
       <NodeConfigDrawer />
       <NodeDrawer />
       <TemplateDrawer />
