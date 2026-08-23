@@ -241,11 +241,19 @@ export const SandboxManagerComponent = () => {
   const submitChange = async (values: DataSandboxRecord) => {
     if (!changeItem) return;
     try {
+      const selectedAssetIds = Array.isArray(values.datasetAssetIds)
+        ? values.datasetAssetIds
+        : [];
+      const datasetNames = selectedAssetIds.map((assetId) => {
+        const asset = changeAssets.find((item) => item.id === assetId);
+        return asset?.name || assetId;
+      });
       responseData(
         await DataSandboxApi.approvalSubmit({
           approvalType: changeType,
           sandboxId: changeItem.id,
           ...values,
+          ...(changeType === 'DATA_CHANGE' ? { datasetNames } : {}),
         }),
         {},
       );
@@ -290,6 +298,7 @@ export const SandboxManagerComponent = () => {
         await DataSandboxApi.approvalSubmit({
           approvalType: 'RECYCLE',
           sandboxId: record.id,
+          sandboxName: record.name,
         }),
         {},
       );

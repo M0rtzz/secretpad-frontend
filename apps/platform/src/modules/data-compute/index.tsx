@@ -494,7 +494,6 @@ const ComponentCatalog = ({ sandboxId }: { sandboxId: string }) => {
   return (
     <MvpPage
       title="沙箱智能建模：建模组件"
-      description="查看和设置系统内置组件及审批通过的自定义算法组件"
       extra={<RefreshButton loading={loading} onClick={refresh} />}
     >
       <Table
@@ -789,7 +788,6 @@ const CanvasList = ({ context }: { context: DataSandboxRecord }) => {
   return (
     <MvpPage
       title="沙箱智能建模：可视化建模"
-      description="复用项目建模画布，输入数据限定为当前沙箱已挂载数据"
       extra={
         <Button
           onClick={() => {
@@ -1033,7 +1031,6 @@ const ReportList = ({ sandboxId }: { sandboxId: string }) => {
   return (
     <MvpPage
       title="沙箱智能建模：模型报告信息"
-      description="汇总特征筛选、残差分析、树结构及建模运行报告"
       extra={<RefreshButton onClick={refresh} />}
     >
       <Space style={{ marginBottom: 16 }}>

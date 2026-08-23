@@ -638,7 +638,6 @@ export const DataDevComponent = () => {
   return (
     <MvpPage
       title="数据开发"
-      description="JAR / SQL / Python / 函数 计算任务开发：制品与版本管理、调试运行与正式运行、结果数据集"
       extra={
         <RefreshButton
           loading={artifactLoading || taskLoading}

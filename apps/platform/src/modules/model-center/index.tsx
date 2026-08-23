@@ -538,7 +538,6 @@ export const ModelCenterComponent = ({
   return (
     <MvpPage
       title="沙箱智能建模：自定义算法 / API 发布"
-      description="统一发布体系：开发制品（JAR / Python / SQL / 函数）或画布模型一键发布为受控 API，支持 IP 白名单、授权用户与有效时间控制，发布即用、跳过审批"
       extra={
         <Space>
           <Button
