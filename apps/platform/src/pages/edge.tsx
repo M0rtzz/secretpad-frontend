@@ -1,13 +1,17 @@
 import Icon from '@ant-design/icons';
 import {
   ApiOutlined,
+  ApartmentOutlined,
   AuditOutlined,
   CalculatorOutlined,
   DashboardOutlined,
   DeploymentUnitOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
+  IdcardOutlined,
   SafetyCertificateOutlined,
+  SettingOutlined,
+  TeamOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
 import { parse } from 'query-string';
@@ -86,6 +90,27 @@ const IntegrationManagerComponent = lazy(() =>
 const OperationCenterComponent = lazy(() =>
   import('@/modules/operation-center').then(
     ({ OperationCenterComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
+const UserManagementComponent = lazy(() =>
+  import('@/modules/system-management').then(
+    ({ UserManagementComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
+const RoleManagementComponent = lazy(() =>
+  import('@/modules/system-management').then(
+    ({ RoleManagementComponent: Component }) => ({
+      default: Component,
+    }),
+  ),
+);
+const TenantManagementComponent = lazy(() =>
+  import('@/modules/system-management').then(
+    ({ TenantManagementComponent: Component }) => ({
       default: Component,
     }),
   ),
@@ -182,6 +207,31 @@ const menuItems: {
     icon: <FileSearchOutlined />,
     component: <UnifiedLogComponent />,
     key: 'unified-log',
+  },
+  {
+    label: '系统管理',
+    icon: <SettingOutlined />,
+    key: 'system-management',
+    children: [
+      {
+        label: '用户管理',
+        key: 'user-management',
+        icon: <TeamOutlined />,
+        component: <UserManagementComponent />,
+      },
+      {
+        label: '角色管理',
+        key: 'role-management',
+        icon: <IdcardOutlined />,
+        component: <RoleManagementComponent />,
+      },
+      {
+        label: '租户管理',
+        key: 'tenant-management',
+        icon: <ApartmentOutlined />,
+        component: <TenantManagementComponent />,
+      },
+    ],
   },
   {
     label: '系统对接',
