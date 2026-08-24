@@ -158,12 +158,15 @@ export const DataGovernanceComponent = () => {
     delete payload.blockSize;
     delete payload.maskingRows;
     delete payload.samplingScript;
-    // 自定义抽样方法由自定义代码执行组件运行，不再下发内置抽样与脱敏参数
+    const masking = transformMaskingRows(values.maskingRows || []);
+    // 自定义抽样由隔离执行组件运行，脚本输出回收后继续执行平台字段脱敏。
     if (values.samplingMethod === 'CUSTOM') {
       payload.execMode = 'CUSTOM';
       payload.script = values.samplingScript;
       delete payload.sampling;
-      delete payload.masking;
+      if (masking.length > 0) {
+        payload.masking = masking;
+      }
       return payload;
     }
     payload.execMode = 'BUILTIN';
@@ -175,7 +178,6 @@ export const DataGovernanceComponent = () => {
       };
     }
     // 脱敏：逐列表单 → [{column,method,params}]
-    const masking = transformMaskingRows(values.maskingRows || []);
     if (masking.length > 0) {
       payload.masking = masking;
     }

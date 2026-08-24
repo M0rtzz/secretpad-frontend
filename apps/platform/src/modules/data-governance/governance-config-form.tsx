@@ -345,7 +345,7 @@ export const GovernanceConfigFields = ({
               label="自定义抽样代码"
               rules={[{ required: true, message: '请输入自定义抽样代码' }]}
               tooltip="Python 脚本，参数：--input 输入 CSV、--output 输出 CSV、--params 参数 JSON；抽样结果写入 --output"
-              extra="自定义抽样的输出由脚本自行决定，下方字段脱敏配置不会参与执行"
+              extra="自定义抽样输出完成后，平台将继续执行下方字段脱敏配置；脚本输出需保留待脱敏字段"
             >
               <Input.TextArea
                 rows={10}
