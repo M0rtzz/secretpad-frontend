@@ -70,6 +70,8 @@ declare namespace API {
     | 'USER_PASSWORD_ERROR'
     | 202011602
     | 'AUTH_FAILED'
+    | 202011605
+    | 'SESSION_INVALID'
     | 202011603
     | 'USER_IS_LOCKED'
     | 202011604
