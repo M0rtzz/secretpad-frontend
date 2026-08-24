@@ -15,6 +15,7 @@ import {
   Tooltip,
 } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
+import { history as umiHistory, useLocation } from 'umi';
 
 import {
   DataSandboxApi,
@@ -98,7 +99,8 @@ const ApprovalParameters = ({ detail }: { detail?: DataSandboxRecord }) => {
       {
         key: 'project',
         label: '所属项目',
-        children: detail.project_name || payload.projectName || payload.projectId || '-',
+        children:
+          detail.project_name || payload.projectName || payload.projectId || '-',
       },
       { key: 'datasets', label: '挂载数据', children: datasets },
       {
@@ -158,6 +160,7 @@ const ApprovalParameters = ({ detail }: { detail?: DataSandboxRecord }) => {
 };
 
 export const SandboxApprovalComponent = () => {
+  const { pathname, search } = useLocation();
   const [items, setItems] = useState<DataSandboxRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -223,6 +226,13 @@ export const SandboxApprovalComponent = () => {
     setReviewItem(item);
     setReviewAction(action);
     reviewForm.resetFields();
+  };
+
+  const openModelApproval = (id: string) => {
+    const params = new URLSearchParams(search);
+    params.set('tab', 'model-approval');
+    params.set('approvalId', id);
+    umiHistory.push({ pathname, search: params.toString() });
   };
 
   return (
@@ -338,16 +348,24 @@ export const SandboxApprovalComponent = () => {
             width: 280,
             render: (_: unknown, row: DataSandboxRecord) => (
               <Space wrap>
-                {view === 'review' && REVIEWABLE.includes(row.status) && (
-                  <Button type="link" onClick={() => openReview(row, 'APPROVE')}>
-                    同意
-                  </Button>
-                )}
-                {view === 'review' && REVIEWABLE.includes(row.status) && (
-                  <Button type="link" danger onClick={() => openReview(row, 'REJECT')}>
-                    拒绝
-                  </Button>
-                )}
+                {view === 'review' &&
+                  row.approval_type !== 'MODEL_API' &&
+                  REVIEWABLE.includes(row.status) && (
+                    <Button type="link" onClick={() => openReview(row, 'APPROVE')}>
+                      同意
+                    </Button>
+                  )}
+                {view === 'review' &&
+                  row.approval_type !== 'MODEL_API' &&
+                  REVIEWABLE.includes(row.status) && (
+                    <Button
+                      type="link"
+                      danger
+                      onClick={() => openReview(row, 'REJECT')}
+                    >
+                      拒绝
+                    </Button>
+                  )}
                 {view === 'mine' && row.status === 'REJECTED' && (
                   <Button type="link" onClick={() => directAction(row, 'RESUBMIT')}>
                     提交复审
@@ -376,13 +394,17 @@ export const SandboxApprovalComponent = () => {
                 </Button>
                 <Button
                   type="link"
-                  onClick={async () =>
+                  onClick={async () => {
+                    if (row.approval_type === 'MODEL_API') {
+                      openModelApproval(row.id);
+                      return;
+                    }
                     setDetail(
                       responseData(await DataSandboxApi.approvalDetail(row.id), {}),
-                    )
-                  }
+                    );
+                  }}
                 >
-                  详细信息
+                  {row.approval_type === 'MODEL_API' ? '审批并测试' : '详细信息'}
                 </Button>
               </Space>
             ),

@@ -15,6 +15,7 @@ import {
   Typography,
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'umi';
 
 import { DataModelApi, DataSandboxRecord, responseData } from '@/services/data-sandbox';
 import {
@@ -66,6 +67,18 @@ const parseTestInput = (raw: string): DataSandboxRecord => {
     return parsed;
   }
   throw new Error('请输入 JSON 数组或 {"rows": [...]}');
+};
+
+/** 兼容滚动升级期间旧节点返回的双层 SecretPadResponse。 */
+const normalizeTestResult = (value: DataSandboxRecord): DataSandboxRecord => {
+  const nestedStatus = value.status;
+  if (!nestedStatus || typeof nestedStatus !== 'object') return value;
+  if (Number(nestedStatus.code) !== 0) {
+    throw new Error(String(nestedStatus.msg || '申请方节点测试失败'));
+  }
+  return value.data && typeof value.data === 'object'
+    ? (value.data as DataSandboxRecord)
+    : value;
 };
 
 /** 画布拓扑结构图（轻量 DAG SVG 渲染，data.table 数据资源节点标记挂载表）。 */
@@ -292,6 +305,8 @@ const DataPreviewModal = ({
 };
 
 export const ModelApprovalComponent = () => {
+  const [searchParams] = useSearchParams();
+  const requestedApprovalId = searchParams.get('approvalId');
   const [activeTab, setActiveTab] = useState('mine');
   const [mine, setMine] = useState<DataSandboxRecord[]>([]);
   const [pending, setPending] = useState<DataSandboxRecord[]>([]);
@@ -334,7 +349,7 @@ export const ModelApprovalComponent = () => {
     refresh();
   }, [refresh]);
 
-  const openDetail = async (id: string) => {
+  const openDetail = useCallback(async (id: string) => {
     setDetailOpen(true);
     setDetailLoading(true);
     setTestResult(undefined);
@@ -354,7 +369,13 @@ export const ModelApprovalComponent = () => {
     } finally {
       setDetailLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!requestedApprovalId) return;
+    setActiveTab('pending');
+    openDetail(requestedApprovalId);
+  }, [openDetail, requestedApprovalId]);
 
   const approve = async (action: 'APPROVE' | 'REJECT') => {
     if (!detail) return;
@@ -407,7 +428,7 @@ export const ModelApprovalComponent = () => {
         await DataModelApi.modelApiApprovalTest({ id: detail.id, ...body }),
         {},
       );
-      setTestResult(res);
+      setTestResult(normalizeTestResult(res));
     } catch (requestError: unknown) {
       message.error(formatError(requestError, '测试执行失败'));
     } finally {
