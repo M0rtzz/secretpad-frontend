@@ -68,6 +68,39 @@ const parseDebugPayload = (input: string): DataSandboxRecord | null => {
   return null;
 };
 
+/** HTTPS 优先使用 Clipboard API，HTTP 部署回退到隐藏文本域复制。 */
+const copyText = async (text: string, label: string) => {
+  try {
+    if (!navigator.clipboard || !window.isSecureContext) {
+      throw new Error('Clipboard API is unavailable');
+    }
+    await navigator.clipboard.writeText(text);
+    message.success(`${label} 已复制`);
+    return;
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.readOnly = true;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    let copied = false;
+    try {
+      copied = document.execCommand('copy');
+    } catch {
+      copied = false;
+    } finally {
+      document.body.removeChild(textarea);
+    }
+    message[copied ? 'success' : 'error'](
+      copied ? `${label} 已复制` : `${label} 复制失败，请手动复制`,
+    );
+  }
+};
+
 export const ModelCenterComponent = ({ context }: { context: DataSandboxRecord }) => {
   /* ------------------------------- API 列表 ------------------------------- */
   const [apis, setApis] = useState<DataSandboxRecord[]>([]);
@@ -750,10 +783,7 @@ export const ModelCenterComponent = ({ context }: { context: DataSandboxRecord }
               <Button
                 size="small"
                 icon={<CopyOutlined />}
-                onClick={() => {
-                  navigator.clipboard.writeText(curlText);
-                  message.success('cURL 已复制');
-                }}
+                onClick={() => copyText(curlText, 'cURL')}
               >
                 复制 cURL
               </Button>
