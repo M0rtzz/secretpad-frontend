@@ -1,6 +1,5 @@
 import { message } from 'antd';
 
-import { listGraph } from '@/services/secretpad/GraphController';
 import { reply } from '@/services/secretpad/MessageController';
 import { projectParticipants } from '@/services/secretpad/P2PProjectController';
 import { Model } from '@/util/valtio-helper';
@@ -14,7 +13,6 @@ export class P2pProjectDetailService extends Model {
   projectDetail = null;
 
   voteInstNodeList: API.ProjectParticipantsDetailVO[] = [];
-  pipelineList: API.GraphMetaVO[] = [];
   processLoading: {
     rejectLoading: boolean;
     agreeLoading: boolean;
@@ -25,9 +23,8 @@ export class P2pProjectDetailService extends Model {
     type: undefined,
   };
 
-  initData = async (voteId: string, projectId: string) => {
+  initData = async (voteId: string) => {
     await this.getVoteInstsNodes(voteId);
-    await this.getPipelines(projectId);
   };
 
   getVoteInstsNodes = async (voteId: string) => {
@@ -45,16 +42,6 @@ export class P2pProjectDetailService extends Model {
       this.voteInstNodeList = [];
       return this.voteInstNodeList;
     }
-  };
-
-  getPipelines = async (projectId: string) => {
-    const pipelineList = await listGraph({
-      projectId,
-    });
-
-    this.pipelineList = pipelineList.data || [];
-
-    return this.pipelineList;
   };
 
   /**

@@ -11,12 +11,10 @@ import {
   message,
 } from 'antd';
 import type { TabsProps } from 'antd';
-import Paragraph from 'antd/es/typography/Paragraph';
 import { parse } from 'query-string';
 import React from 'react';
 import { memo, useEffect, useState } from 'react';
 
-import { ReactComponent as PipelineIcon } from '@/assets/pipeline.icon.svg';
 import { DefaultModalManager } from '@/modules/dag-modal-manager';
 import { getModel, useModel } from '@/util/valtio-helper';
 
@@ -30,33 +28,6 @@ import { P2pProjectListService } from '../p2p-project-list/p2p-project-list.serv
 
 import styles from './index.less';
 import { P2pProjectDetailService } from './project-detail-service';
-
-const PipelinesComponent: React.FC = () => {
-  const p2pProjectDetailService = useModel(P2pProjectDetailService);
-
-  return (
-    <div>
-      {p2pProjectDetailService.pipelineList.length > 0 ? (
-        p2pProjectDetailService.pipelineList.map((pipeline) => {
-          return (
-            <div className={styles.pipelineItem} key={pipeline.name}>
-              {' '}
-              <PipelineIcon />
-              <Paragraph
-                style={{ marginLeft: 4, width: 510, marginBottom: 0 }}
-                ellipsis={{ rows: 1, tooltip: pipeline.name }}
-              >
-                {pipeline.name}
-              </Paragraph>
-            </div>
-          );
-        })
-      ) : (
-        <Empty description="暂无训练流数据" />
-      )}
-    </div>
-  );
-};
 
 interface IVoteInstsNodesComponent {
   voteInstNodeList: API.ProjectParticipantsDetailVO[];
@@ -163,11 +134,6 @@ export const P2pProjectDetailModal = memo(() => {
         />
       ),
     },
-    {
-      key: 'pipelines',
-      label: `训练流（${p2pProjectDetailService.pipelineList.length}）`,
-      children: <PipelinesComponent />,
-    },
   ];
 
   const onClose = () => {
@@ -175,9 +141,8 @@ export const P2pProjectDetailModal = memo(() => {
   };
 
   useEffect(() => {
-    if (data.voteId && data.projectId)
-      p2pProjectDetailService.initData(data.voteId, data.projectId);
-  }, [data.projectId, data.voteId]);
+    if (data.voteId) p2pProjectDetailService.initData(data.voteId);
+  }, [data.voteId]);
 
   useEffect(() => {
     setTabKey(data.tabKey || 'parties');
