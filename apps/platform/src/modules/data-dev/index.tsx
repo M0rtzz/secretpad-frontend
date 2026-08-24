@@ -641,10 +641,11 @@ export const DataDevComponent = () => {
       title="数据开发"
       extra={
         <RefreshButton
-          loading={artifactLoading || taskLoading}
+          loading={artifactLoading || taskLoading || controlLoading}
           onClick={() => {
             refreshArtifacts();
             refreshTasks();
+            refreshResultControls();
           }}
         />
       }
