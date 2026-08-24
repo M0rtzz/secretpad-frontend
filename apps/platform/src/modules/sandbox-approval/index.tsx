@@ -95,7 +95,11 @@ const ApprovalParameters = ({ detail }: { detail?: DataSandboxRecord }) => {
     CREATE: [
       { key: 'name', label: '沙箱名称', children: payload.name || '-' },
       { key: 'description', label: '沙箱描述', children: payload.description || '-' },
-      { key: 'project', label: '所属项目', children: payload.projectId || '-' },
+      {
+        key: 'project',
+        label: '所属项目',
+        children: detail.project_name || payload.projectName || payload.projectId || '-',
+      },
       { key: 'datasets', label: '挂载数据', children: datasets },
       {
         key: 'quota',
@@ -291,7 +295,12 @@ export const SandboxApprovalComponent = () => {
             render: (v: string) => (v ? v : '-'),
           },
           { title: '所属方', dataIndex: 'owner_id' },
-          { title: '所属项目', dataIndex: 'project_id' },
+          {
+            title: '所属项目',
+            dataIndex: 'project_name',
+            render: (value: string, row: DataSandboxRecord) =>
+              value || row.project_id || '-',
+          },
           { title: '提交人', dataIndex: 'submitter' },
           {
             title: '状态',
@@ -438,7 +447,7 @@ export const SandboxApprovalComponent = () => {
           <div>申请单：{detail?.id}</div>
           <div>资源 ID：{detail?.sandbox_id || '待创建'}</div>
           <div>所属节点 ID：{detail?.applicant_node_id || detail?.owner_id}</div>
-          <div>所属项目：{detail?.project_id}</div>
+          <div>所属项目：{detail?.project_name || detail?.project_id || '-'}</div>
           <div>提交人：{detail?.submitter}</div>
           {detail?.approval_type === 'ASSET_DELETE' && (
             <>
