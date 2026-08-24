@@ -278,10 +278,24 @@ const defaultSample = (column: string) => {
   return '示例数据';
 };
 
-const NumberValue = ({ mode }: { mode: string }) => (
+const NumberValue = ({
+  mode,
+  perStratum = false,
+}: {
+  mode: string;
+  perStratum?: boolean;
+}) => (
   <Form.Item
     name={mode === 'ratio' ? 'samplingRatio' : 'samplingCount'}
-    label={mode === 'ratio' ? '比例' : '行数'}
+    label={
+      mode === 'ratio'
+        ? perStratum
+          ? '每层比例'
+          : '比例'
+        : perStratum
+        ? '每层行数'
+        : '行数'
+    }
     rules={[{ required: true, message: `请输入${mode === 'ratio' ? '比例' : '行数'}` }]}
   >
     <InputNumber
@@ -398,7 +412,7 @@ export const GovernanceConfigFields = ({
                 </Form.Item>
               </Col>
               <Col span={7}>
-                <NumberValue mode={samplingMode} />
+                <NumberValue mode={samplingMode} perStratum />
               </Col>
             </Row>
           )}
