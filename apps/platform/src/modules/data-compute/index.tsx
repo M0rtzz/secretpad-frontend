@@ -20,6 +20,7 @@ import {
   Table,
   Tag,
   Tabs,
+  Tree,
   Typography,
   Menu,
 } from 'antd';
@@ -31,7 +32,7 @@ import {
   TableOutlined,
 } from '@ant-design/icons';
 import { parse } from 'query-string';
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { history, useLocation } from 'umi';
 
 import { DataDevComponent } from '@/modules/data-dev';
@@ -795,7 +796,7 @@ const ScorecardSection = ({ data }: { data: DataSandboxRecord }) => {
   );
 };
 
-/** 树结构：导出单棵树的节点明细（分裂特征、阈值、样本数、左右子节点）。 */
+/** 树结构：自动解析第一棵树并直接展示，节点明细表用于辅助核对。 */
 const TreeStructureSection = ({
   data,
   modelId,
@@ -806,20 +807,39 @@ const TreeStructureSection = ({
   onComputed: () => void;
 }) => {
   const [computing, setComputing] = useState(false);
-  const [treeIndex, setTreeIndex] = useState(0);
+  const [computeError, setComputeError] = useState('');
+  const requestedRef = useRef('');
+  const onComputedRef = useRef(onComputed);
+  onComputedRef.current = onComputed;
   const nodes = reportRows(data.nodes);
-  const compute = async (index: number) => {
-    setComputing(true);
-    try {
-      await DataComputeApi.canvasModelTreeStructure(modelId, index);
-      message.success('树结构导出完成');
-      onComputed();
-    } catch (e: any) {
-      message.error(e.message || '树结构导出失败');
-    } finally {
-      setComputing(false);
+  useEffect(() => {
+    const requestKey = `${modelId}:0`;
+    if (
+      !modelId ||
+      data.status === 'AVAILABLE' ||
+      data.status === 'UNSUPPORTED' ||
+      requestedRef.current === requestKey
+    ) {
+      return;
     }
-  };
+    requestedRef.current = requestKey;
+    let active = true;
+    setComputing(true);
+    setComputeError('');
+    DataComputeApi.canvasModelTreeStructure(modelId, 0)
+      .then(() => {
+        if (active) onComputedRef.current();
+      })
+      .catch((error: any) => {
+        if (active) setComputeError(error.message || '树结构生成失败');
+      })
+      .finally(() => {
+        if (active) setComputing(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [data.status, modelId]);
   if (data.status === 'UNSUPPORTED') {
     return (
       <Alert
@@ -832,39 +852,58 @@ const TreeStructureSection = ({
     );
   }
   const treeCount = Number(data.treeCount || 0);
-  const selector = (
-    <Space>
-      <Typography.Text>树序号</Typography.Text>
-      <Select
-        value={treeIndex}
-        style={{ width: 120 }}
-        aria-label="选择要导出的树序号"
-        options={Array.from({ length: Math.max(treeCount, 1) }, (_, index) => ({
-          value: index,
-          label: `第 ${index + 1} 棵`,
-        }))}
-        onChange={setTreeIndex}
-      />
-      <Button type="primary" loading={computing} onClick={() => compute(treeIndex)}>
-        {data.status === 'AVAILABLE' ? '重新导出' : '导出树结构'}
-      </Button>
-    </Space>
-  );
   if (data.status !== 'AVAILABLE') {
     return (
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <Alert
           showIcon
-          type="info"
-          message="模型产物为 joblib 二进制，需要在执行侧解析后才能展示树结构"
+          type={computeError ? 'error' : 'info'}
+          message={computeError || (computing ? '正在生成树结构…' : '树结构正在准备中')}
         />
-        {selector}
       </Space>
     );
   }
+  const nodeMap = new Map(nodes.map((node) => [String(node.nodeId), node]));
+  const childIds = new Set(
+    nodes
+      .flatMap((node) => [node.left, node.right])
+      .filter((id) => id !== null && id !== undefined && id !== '')
+      .map(String),
+  );
+  const root = nodes.find((node) => !childIds.has(String(node.nodeId))) || nodes[0];
+  const buildTree = (
+    node: DataSandboxRecord | undefined,
+    branch = '',
+    visited = new Set<string>(),
+  ): any => {
+    if (!node) return null;
+    const key = String(node.nodeId);
+    if (visited.has(key)) return null;
+    const nextVisited = new Set(visited).add(key);
+    const value = Array.isArray(node.value)
+      ? JSON.stringify(node.value)
+      : reportValue(node.value);
+    const title = node.leaf ? (
+      <span>
+        {branch ? `${branch} · ` : ''}叶节点：{value}
+      </span>
+    ) : (
+      <span>
+        {branch ? `${branch} · ` : ''}
+        {String(node.feature || '特征')} ≤ {reportValue(node.threshold)}
+      </span>
+    );
+    const children = node.leaf
+      ? []
+      : [
+          buildTree(nodeMap.get(String(node.left)), '是', nextVisited),
+          buildTree(nodeMap.get(String(node.right)), '否', nextVisited),
+        ].filter(Boolean);
+    return { key, title, children };
+  };
+  const treeData = root ? [buildTree(root)].filter(Boolean) : [];
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      {selector}
       {data.truncated ? (
         <Alert
           showIcon
@@ -903,6 +942,11 @@ const TreeStructureSection = ({
           },
         ]}
       />
+      {treeData.length ? (
+        <Tree showLine defaultExpandAll treeData={treeData} blockNode />
+      ) : (
+        <Alert showIcon type="warning" message="没有获取到可展示的树节点" />
+      )}
       <Table
         rowKey={(row) => String(row.nodeId)}
         size="small"
