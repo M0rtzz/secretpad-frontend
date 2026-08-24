@@ -1,10 +1,8 @@
 import {
-  Badge,
   Button,
   Empty,
   Input,
   Modal,
-  Pagination,
   Popconfirm,
   Space,
   Table,
@@ -15,7 +13,6 @@ import {
 import type { TabsProps } from 'antd';
 import Paragraph from 'antd/es/typography/Paragraph';
 import { parse } from 'query-string';
-import type { Dispatch, SetStateAction } from 'react';
 import React from 'react';
 import { memo, useEffect, useState } from 'react';
 
@@ -30,7 +27,6 @@ import {
   ProjectStatus,
 } from '../p2p-project-list/components/common';
 import { P2pProjectListService } from '../p2p-project-list/p2p-project-list.service';
-import { mapStatusToBadge } from '../project-list/components/popover';
 
 import styles from './index.less';
 import { P2pProjectDetailService } from './project-detail-service';
@@ -58,61 +54,6 @@ const PipelinesComponent: React.FC = () => {
       ) : (
         <Empty description="暂无训练流数据" />
       )}
-    </div>
-  );
-};
-
-interface IJobComponent {
-  jobCount: number;
-  projectId: string;
-  setTabKey: Dispatch<SetStateAction<string>>;
-}
-
-const JobsComponent: React.FC<IJobComponent> = (props: IJobComponent) => {
-  const { jobCount, projectId, setTabKey } = props;
-  const p2pProjectDetailService = useModel(P2pProjectDetailService);
-
-  const handlePageChange = (_page: number) => {
-    (async () => {
-      await p2pProjectDetailService.getJobs({
-        projectId: projectId,
-        pageNum: _page,
-        pageSize: 10,
-      });
-      setTabKey('tasks');
-      p2pProjectDetailService.setJobCurrPage(_page);
-    })();
-  };
-
-  return (
-    <div>
-      {p2pProjectDetailService.jobList.length > 0 ? (
-        p2pProjectDetailService.jobList.map((job) => {
-          return (
-            <React.Fragment key={job.jobId}>
-              <div className={styles.jobItem}>
-                <Badge
-                  status={mapStatusToBadge(job.status as API.GraphJobStatus)}
-                  text=""
-                />
-                <span className={styles.jobTime}>
-                  {formatTimestamp(job.gmtCreate as string)}
-                </span>
-                <div className={styles.jobId}>ID: {job.jobId}</div>
-              </div>
-            </React.Fragment>
-          );
-        })
-      ) : (
-        <Empty description="暂无任务数据" />
-      )}
-      <Pagination
-        style={{ marginTop: 12, textAlign: 'right' }}
-        defaultCurrent={p2pProjectDetailService.jobCurrPage}
-        total={jobCount}
-        onChange={handlePageChange}
-        showSizeChanger={false}
-      />
     </div>
   );
 };
@@ -226,17 +167,6 @@ export const P2pProjectDetailModal = memo(() => {
       key: 'pipelines',
       label: `训练流（${p2pProjectDetailService.pipelineList.length}）`,
       children: <PipelinesComponent />,
-    },
-    {
-      key: 'tasks',
-      label: `任务数（${data.jobCount}）`,
-      children: (
-        <JobsComponent
-          jobCount={data.jobCount}
-          projectId={data.projectId}
-          setTabKey={setTabKey}
-        />
-      ),
     },
   ];
 

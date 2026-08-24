@@ -52,8 +52,6 @@ import { P2pProjectListService } from './p2p-project-list.service';
 
 export enum TabKey {
   'PARTIES' = 'parties',
-  'PIPELINES' = 'pipelines',
-  'TASKS' = 'tasks',
 }
 
 /** 项目挂载目录沿用数据目录的访问时间窗，边界为空表示不限制。 */

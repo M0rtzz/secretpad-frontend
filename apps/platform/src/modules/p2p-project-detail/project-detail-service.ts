@@ -3,7 +3,6 @@ import { message } from 'antd';
 import { listGraph } from '@/services/secretpad/GraphController';
 import { reply } from '@/services/secretpad/MessageController';
 import { projectParticipants } from '@/services/secretpad/P2PProjectController';
-import { listJob } from '@/services/secretpad/ProjectController';
 import { Model } from '@/util/valtio-helper';
 
 import { StatusEnum } from '../message-center/message.service';
@@ -16,10 +15,6 @@ export class P2pProjectDetailService extends Model {
 
   voteInstNodeList: API.ProjectParticipantsDetailVO[] = [];
   pipelineList: API.GraphMetaVO[] = [];
-  jobList: API.ProjectJobSummaryVO[] = [];
-
-  jobCurrPage = 1;
-
   processLoading: {
     rejectLoading: boolean;
     agreeLoading: boolean;
@@ -33,15 +28,6 @@ export class P2pProjectDetailService extends Model {
   initData = async (voteId: string, projectId: string) => {
     await this.getVoteInstsNodes(voteId);
     await this.getPipelines(projectId);
-    await this.getJobs({
-      projectId: projectId,
-      pageNum: 1,
-      pageSize: 10,
-    });
-  };
-
-  setJobCurrPage = (jobCurrPage: number) => {
-    this.jobCurrPage = jobCurrPage;
   };
 
   getVoteInstsNodes = async (voteId: string) => {
@@ -69,22 +55,6 @@ export class P2pProjectDetailService extends Model {
     this.pipelineList = pipelineList.data || [];
 
     return this.pipelineList;
-  };
-
-  getJobs = async (params: {
-    projectId: string;
-    pageNum: number;
-    pageSize: number;
-  }) => {
-    const jobsList = await listJob({
-      projectId: params.projectId,
-      pageNum: params.pageNum,
-      pageSize: params.pageSize,
-    });
-
-    this.jobList = jobsList?.data?.data || [];
-
-    return this.jobList;
   };
 
   /**
