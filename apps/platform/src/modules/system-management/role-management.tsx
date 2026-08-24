@@ -16,18 +16,24 @@ import { useMemo, useState } from 'react';
 import { formatTime, MvpPage } from '@/modules/data-sandbox-mvp/common';
 
 import styles from './index.less';
+import type { SandboxRole } from './store';
 import {
   createEntityId,
   permissionLabelMap,
   permissionTree,
-  SandboxRole,
   useSystemManagementStore,
 } from './store';
+
+const permissionLabels = (permissions: string[]) =>
+  permissions
+    .filter((key) => !key.startsWith('group-'))
+    .map((key) => permissionLabelMap[key] || key);
 
 export const RoleManagementComponent = () => {
   const { state, updateState } = useSystemManagementStore();
   const [keyword, setKeyword] = useState('');
   const [editing, setEditing] = useState<SandboxRole>();
+  const [viewingPermissions, setViewingPermissions] = useState<SandboxRole>();
   const [modalOpen, setModalOpen] = useState(false);
   const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
   const [form] = Form.useForm<SandboxRole>();
@@ -167,18 +173,26 @@ export const RoleManagementComponent = () => {
           {
             title: '权限范围',
             dataIndex: 'permissions',
-            render: (permissions: string[]) => {
-              const labels = permissions
-                .map((key) => permissionLabelMap[key])
-                .filter(Boolean);
+            width: 320,
+            render: (permissions: string[], row: SandboxRole) => {
+              const labels = permissionLabels(permissions);
               return (
                 <div className={styles.permissionTags}>
-                  {labels.slice(0, 5).map((label) => (
+                  {labels.slice(0, 3).map((label) => (
                     <Tag color="blue" key={label}>
                       {label}
                     </Tag>
                   ))}
-                  {labels.length > 5 && <Tag>+{labels.length - 5}</Tag>}
+                  {labels.length > 3 && (
+                    <Button
+                      className={styles.permissionMore}
+                      size="small"
+                      type="link"
+                      onClick={() => setViewingPermissions(row)}
+                    >
+                      +{labels.length - 3}
+                    </Button>
+                  )}
                 </div>
               );
             },
@@ -263,6 +277,22 @@ export const RoleManagementComponent = () => {
             </div>
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        open={!!viewingPermissions}
+        title={`${viewingPermissions?.name || ''}·全部权限范围`}
+        width={560}
+        footer={null}
+        onCancel={() => setViewingPermissions(undefined)}
+        destroyOnClose
+      >
+        <div className={styles.permissionModalTags}>
+          {permissionLabels(viewingPermissions?.permissions || []).map((label) => (
+            <Tag color="blue" key={label}>
+              {label}
+            </Tag>
+          ))}
+        </div>
       </Modal>
     </MvpPage>
   );

@@ -8,8 +8,8 @@
 
 .filters {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
 }
 
@@ -28,9 +28,24 @@
 
 .permissionTags {
   display: flex;
+  max-width: 300px;
   flex-wrap: wrap;
-  max-width: 420px;
   gap: 4px;
+}
+
+.permissionMore {
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #f0f5ff;
+  line-height: 22px;
+}
+
+.permissionModalTags {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  gap: 8px;
 }
 
 .permissionTree {
@@ -51,11 +66,18 @@
   background: linear-gradient(135deg, #fff 0%, #f7f9ff 100%);
 }
 
+.statDetail {
+  margin-top: 6px;
+  color: #8c8c8c;
+  font-size: 12px;
+  white-space: normal;
+}
+
 .quota {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   color: #595959;
+  gap: 2px;
   line-height: 20px;
   white-space: normal;
 }
@@ -63,8 +85,7 @@
 .quotaLine {
   display: flex;
   flex-wrap: wrap;
-  column-gap: 12px;
-  row-gap: 2px;
+  gap: 2px 12px;
 }
 
 .quotaItem {

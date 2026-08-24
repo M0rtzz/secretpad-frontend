@@ -22,7 +22,12 @@ import { useMemo, useState } from 'react';
 import { formatTime, MvpPage } from '@/modules/data-sandbox-mvp/common';
 
 import styles from './index.less';
-import { createEntityId, SandboxTenant, useSystemManagementStore } from './store';
+import type { SandboxTenant } from './store';
+import {
+  createEntityId,
+  PLATFORM_RESOURCE_TOTALS,
+  useSystemManagementStore,
+} from './store';
 
 const tenantStatus = {
   ACTIVE: { label: '正常', color: 'success' },
@@ -43,8 +48,7 @@ export const TenantManagementComponent = () => {
       const matchesKeyword =
         !normalized ||
         tenant.name.toLowerCase().includes(normalized) ||
-        tenant.code.toLowerCase().includes(normalized) ||
-        tenant.ownerId.toLowerCase().includes(normalized);
+        tenant.code.toLowerCase().includes(normalized);
       return matchesKeyword && (!statusFilter || tenant.status === statusFilter);
     });
   }, [keyword, state.tenants, statusFilter]);
@@ -52,7 +56,7 @@ export const TenantManagementComponent = () => {
   const activeCount = state.tenants.filter(
     (tenant) => tenant.status === 'ACTIVE',
   ).length;
-  const quotaTotals = state.tenants.reduce(
+  const allocatedQuota = state.tenants.reduce(
     (totals, tenant) => ({
       cpuCores: totals.cpuCores + tenant.cpuCores,
       memoryGb: totals.memoryGb + tenant.memoryGb,
@@ -61,6 +65,17 @@ export const TenantManagementComponent = () => {
     }),
     { cpuCores: 0, memoryGb: 0, gpuCount: 0, storageGb: 0 },
   );
+  const quotaAvailableForForm = state.tenants
+    .filter((tenant) => tenant.id !== editing?.id)
+    .reduce(
+      (available, tenant) => ({
+        cpuCores: available.cpuCores - tenant.cpuCores,
+        memoryGb: available.memoryGb - tenant.memoryGb,
+        gpuCount: available.gpuCount - tenant.gpuCount,
+        storageGb: available.storageGb - tenant.storageGb,
+      }),
+      { ...PLATFORM_RESOURCE_TOTALS },
+    );
 
   const openCreate = () => {
     setEditing(undefined);
@@ -94,6 +109,44 @@ export const TenantManagementComponent = () => {
       message.error('租户编码已存在');
       return;
     }
+    const exceededResource = [
+      {
+        label: 'CPU',
+        value: values.cpuCores,
+        available: quotaAvailableForForm.cpuCores,
+        unit: '核',
+      },
+      {
+        label: '内存',
+        value: values.memoryGb,
+        available: quotaAvailableForForm.memoryGb,
+        unit: 'GB',
+      },
+      {
+        label: 'GPU',
+        value: values.gpuCount,
+        available: quotaAvailableForForm.gpuCount,
+        unit: '卡',
+      },
+      {
+        label: '存储',
+        value: values.storageGb,
+        available: quotaAvailableForForm.storageGb,
+        unit: 'GB',
+      },
+    ].find(
+      ({ value, available }) =>
+        !Number.isFinite(value) || value > Math.max(available, 0),
+    );
+    if (exceededResource) {
+      message.error(
+        `${exceededResource.label}配额超出可分配资源，当前最多可分配 ${Math.max(
+          exceededResource.available,
+          0,
+        )} ${exceededResource.unit}`,
+      );
+      return;
+    }
     updateState((current) => ({
       ...current,
       tenants: editing
@@ -104,7 +157,6 @@ export const TenantManagementComponent = () => {
                   ...values,
                   code,
                   name: values.name.trim(),
-                  ownerId: values.ownerId.trim(),
                 }
               : tenant,
           )
@@ -114,7 +166,6 @@ export const TenantManagementComponent = () => {
               id: createEntityId('tenant'),
               code,
               name: values.name.trim(),
-              ownerId: values.ownerId.trim(),
               createdAt: new Date().toISOString(),
             },
             ...current.tenants,
@@ -150,7 +201,7 @@ export const TenantManagementComponent = () => {
   return (
     <MvpPage
       title="租户管理"
-      description="管理沙箱租户的节点归属、硬件资源配额以及数据计算隔离策略"
+      description="管理当前节点服务器上的租户、资源配额与数据计算隔离策略"
       extra={
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           新增租户
@@ -170,22 +221,42 @@ export const TenantManagementComponent = () => {
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
           <Card className={styles.statCard}>
-            <Statistic title="CPU 配额" value={quotaTotals.cpuCores} suffix="核" />
+            <Statistic
+              title="CPU 配额"
+              value={allocatedQuota.cpuCores}
+              suffix={`/ ${PLATFORM_RESOURCE_TOTALS.cpuCores} 核`}
+            />
+            <div className={styles.statDetail}>已分配 / 资源总额</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
           <Card className={styles.statCard}>
-            <Statistic title="内存配额" value={quotaTotals.memoryGb} suffix="GB" />
+            <Statistic
+              title="内存配额"
+              value={allocatedQuota.memoryGb}
+              suffix={`/ ${PLATFORM_RESOURCE_TOTALS.memoryGb} GB`}
+            />
+            <div className={styles.statDetail}>已分配 / 资源总额</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
           <Card className={styles.statCard}>
-            <Statistic title="GPU 配额" value={quotaTotals.gpuCount} suffix="卡" />
+            <Statistic
+              title="GPU 配额"
+              value={allocatedQuota.gpuCount}
+              suffix={`/ ${PLATFORM_RESOURCE_TOTALS.gpuCount} 卡`}
+            />
+            <div className={styles.statDetail}>已分配 / 资源总额</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={8} xl={4}>
           <Card className={styles.statCard}>
-            <Statistic title="存储配额" value={quotaTotals.storageGb} suffix="GB" />
+            <Statistic
+              title="存储配额"
+              value={allocatedQuota.storageGb}
+              suffix={`/ ${PLATFORM_RESOURCE_TOTALS.storageGb} GB`}
+            />
+            <div className={styles.statDetail}>已分配 / 资源总额</div>
           </Card>
         </Col>
       </Row>
@@ -193,7 +264,7 @@ export const TenantManagementComponent = () => {
         <div className={styles.filters}>
           <Input.Search
             allowClear
-            placeholder="搜索租户名称、编码或节点"
+            placeholder="搜索租户名称或编码"
             onSearch={setKeyword}
             style={{ width: 280 }}
           />
@@ -217,7 +288,7 @@ export const TenantManagementComponent = () => {
           pageSize: 10,
           showTotal: (total) => '共 ' + total + ' 条',
         }}
-        scroll={{ x: 1340 }}
+        scroll={{ x: 1180 }}
         columns={[
           {
             title: '租户',
@@ -230,7 +301,6 @@ export const TenantManagementComponent = () => {
               </>
             ),
           },
-          { title: '归属节点', dataIndex: 'ownerId', width: 150 },
           {
             title: '联系人',
             dataIndex: 'contact',
@@ -346,13 +416,6 @@ export const TenantManagementComponent = () => {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item
-            name="ownerId"
-            label="归属节点"
-            rules={[{ required: true, message: '请输入归属节点 ID' }]}
-          >
-            <Input placeholder="请输入租户绑定的沙箱节点 ID" />
-          </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="contact" label="联系人">
@@ -374,6 +437,7 @@ export const TenantManagementComponent = () => {
               >
                 <InputNumber
                   min={0.1}
+                  max={Math.max(quotaAvailableForForm.cpuCores, 0.1)}
                   step={0.5}
                   precision={1}
                   style={{ width: '100%' }}
@@ -386,7 +450,12 @@ export const TenantManagementComponent = () => {
                 label="内存配额（GB）"
                 rules={[{ required: true, message: '请输入内存配额' }]}
               >
-                <InputNumber min={1} precision={0} style={{ width: '100%' }} />
+                <InputNumber
+                  min={1}
+                  max={Math.max(quotaAvailableForForm.memoryGb, 1)}
+                  precision={0}
+                  style={{ width: '100%' }}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -397,7 +466,12 @@ export const TenantManagementComponent = () => {
                 label="GPU 配额（卡）"
                 rules={[{ required: true, message: '请输入 GPU 配额' }]}
               >
-                <InputNumber min={0} precision={0} style={{ width: '100%' }} />
+                <InputNumber
+                  min={0}
+                  max={Math.max(quotaAvailableForForm.gpuCount, 0)}
+                  precision={0}
+                  style={{ width: '100%' }}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -406,7 +480,12 @@ export const TenantManagementComponent = () => {
                 label="存储容量（GB）"
                 rules={[{ required: true, message: '请输入存储容量' }]}
               >
-                <InputNumber min={1} precision={0} style={{ width: '100%' }} />
+                <InputNumber
+                  min={1}
+                  max={Math.max(quotaAvailableForForm.storageGb, 1)}
+                  precision={0}
+                  style={{ width: '100%' }}
+                />
               </Form.Item>
             </Col>
           </Row>

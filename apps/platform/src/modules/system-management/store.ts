@@ -27,7 +27,6 @@ export type SandboxTenant = {
   id: string;
   code: string;
   name: string;
-  ownerId: string;
   contact: string;
   phone: string;
   status: TenantStatus;
@@ -39,6 +38,13 @@ export type SandboxTenant = {
   computeIsolation: boolean;
   createdAt: string;
 };
+
+export const PLATFORM_RESOURCE_TOTALS = {
+  cpuCores: 64,
+  memoryGb: 256,
+  gpuCount: 4,
+  storageGb: 4096,
+} as const;
 
 export type SystemManagementState = {
   users: SandboxUser[];
@@ -111,7 +117,6 @@ const DEFAULT_STATE: SystemManagementState = {
       id: 'tenant-platform',
       code: 'platform',
       name: '平台运营租户',
-      ownerId: 'kuscia-system',
       contact: '平台管理员',
       phone: '13800000000',
       status: 'ACTIVE',
@@ -127,7 +132,6 @@ const DEFAULT_STATE: SystemManagementState = {
       id: 'tenant-research',
       code: 'joint-modeling',
       name: '联合建模租户',
-      ownerId: 'node-alice',
       contact: '项目负责人',
       phone: '13900000000',
       status: 'ACTIVE',
@@ -226,6 +230,7 @@ const DEFAULT_STATE: SystemManagementState = {
 const STORAGE_KEY = 'data-sandbox-system-management-v1';
 
 type StoredSandboxTenant = Partial<SandboxTenant> & {
+  ownerId?: string;
   projectQuota?: number;
   sandboxQuota?: number;
 };
@@ -237,6 +242,7 @@ const isValidQuota = (value: unknown, allowZero = false): value is number =>
 
 const normalizeTenant = (tenant: StoredSandboxTenant): SandboxTenant => {
   const normalized = { ...tenant };
+  delete normalized.ownerId;
   delete normalized.projectQuota;
   delete normalized.sandboxQuota;
   return {
